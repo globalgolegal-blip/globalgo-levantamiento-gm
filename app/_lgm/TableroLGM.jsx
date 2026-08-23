@@ -18,17 +18,21 @@ const GOTRACK = process.env.NEXT_PUBLIC_GOTRACK_URL || 'https://gotrack-go.verce
 
 /* ─────────────────────────────── helpers */
 
+// Zona horaria fija: el servidor renderiza en UTC y el navegador en hora de Lima,
+// sin esto el texto no coincide entre ambos y React descarta el HTML del servidor.
+const ZONA = 'America/Lima';
+
 const fecha = (v) => {
   if (!v) return '—';
   const d = new Date(v);
-  return isNaN(d) ? '—' : d.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return isNaN(d) ? '—' : d.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: ZONA });
 };
 
 const fechaHora = (v) => {
   if (!v) return '';
   const d = new Date(v);
   return isNaN(d) ? '' : d.toLocaleString('es-PE', {
-    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: ZONA,
   });
 };
 
