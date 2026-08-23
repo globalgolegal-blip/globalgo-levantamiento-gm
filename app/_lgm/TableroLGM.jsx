@@ -191,7 +191,10 @@ function BarraSesion({ sesion, setSesion, usuarios }) {
 
   if (sesion) {
     return (
-      <span style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, color: T.texto2 }}>
+      <span style={{
+        display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, color: T.texto2,
+        alignSelf: 'flex-end',
+      }}>
         <Avatar usuario={sesion.usuario} foto={sesion.foto} tam={26} />
         <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.25 }}>
           <b style={{ color: T.texto, fontSize: 12 }}>{sesion.usuario}</b>
@@ -206,7 +209,11 @@ function BarraSesion({ sesion, setSesion, usuarios }) {
 
   return (
     <>
-      <Filtro activa={false} onClick={() => setAbierto(!abierto)}>Identificarse para editar</Filtro>
+      <button onClick={() => setAbierto(!abierto)} style={{
+        width: '100%', textAlign: 'center', fontSize: 12, fontWeight: 600,
+        padding: '8px 12px', borderRadius: T.rPill,
+        background: T.blanco, color: T.navy, border: `0.5px solid ${T.linea2}`, cursor: 'pointer',
+      }}>ACCEDER PARA EDITAR</button>
       {abierto && (
         <div style={{
           width: '100%', marginTop: 8, background: T.crema, border: `0.5px solid ${T.linea}`,
@@ -218,7 +225,7 @@ function BarraSesion({ sesion, setSesion, usuarios }) {
             </p>
           ) : !elegido ? (
             <>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 12 }}>
                 {[['cobranza', 'Cobranza'], ['tesoreria', 'Tesorería'], ['legal', 'Legal']].map(([k, txt]) => (
                   <Filtro key={k} activa={area === k} onClick={() => setArea(k)}>{txt}</Filtro>
                 ))}
@@ -227,7 +234,7 @@ function BarraSesion({ sesion, setSesion, usuarios }) {
                 <p style={{ fontSize: 12.5, color: T.texto2 }}>Nadie registrado en esta área todavía.</p>
               ) : (
                 <div style={{
-                  display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 8,
+                  display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8,
                 }}>
                   {delArea.map((u) => (
                     <button key={u.usuario} onClick={() => { setElegido(u); setError(''); }} style={{
@@ -716,6 +723,7 @@ export default function TableroLGM({ expedientes = [], usuarios = [], actualizad
       if (regimen !== 'todos' && e.regimen !== regimen.toUpperCase()) return false;
       if (plazo === 'vencido' && !vencido(e)) return false;
       if (plazo === 'hoy' && !venceHoy(e)) return false;
+      if (plazo === 'notaria' && e.estado !== 'EN NOTARÍA') return false;
       if (plazo === 'congelado' && !congelado(e)) return false;
       if (q && !`${e.nombre} ${e.doi} ${e.credito} ${e.placa} ${e.id}`.toLowerCase().includes(q)) return false;
       return true;
@@ -737,17 +745,21 @@ export default function TableroLGM({ expedientes = [], usuarios = [], actualizad
 
       <header style={{ background: T.navy, color: T.blanco, padding: '15px 0 0' }}>
         <div style={{ maxWidth: 512, margin: '0 auto', padding: '0 16px' }}>
-          <div style={{ fontSize: 18, fontWeight: 600 }}>GoTrack</div>
-          <div style={{ fontSize: 12, color: T.azulNav }}>Levantamiento de Garantía Mobiliaria</div>
-          <nav style={{ display: 'flex', gap: 20, marginTop: 13 }}>
-            <a href={GOTRACK} style={{ fontSize: 12, color: T.azulNav, textDecoration: 'none', paddingBottom: 10 }}>
+          <div style={{ fontSize: 15, fontWeight: 500 }}>GoTrack</div>
+          <div style={{ fontSize: 11, color: T.azulNav }}>Levantamiento de Garantía Mobiliaria</div>
+          <nav style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginTop: 13 }}>
+            <a href={GOTRACK} style={{
+              fontSize: 12, color: T.azulNav, textDecoration: 'none', textAlign: 'center', paddingBottom: 10,
+            }}>
               Desembolso
             </a>
-            <a href={GOTRACK + '/ventas-segunda'} style={{ fontSize: 12, color: T.azulNav, textDecoration: 'none', paddingBottom: 10 }}>
+            <a href={GOTRACK + '/ventas-segunda'} style={{
+              fontSize: 12, color: T.azulNav, textDecoration: 'none', textAlign: 'center', paddingBottom: 10,
+            }}>
               Ventas de segunda
             </a>
             <span style={{
-              fontSize: 12, color: T.blanco, fontWeight: 500,
+              fontSize: 12, color: T.blanco, fontWeight: 500, textAlign: 'center',
               paddingBottom: 10, borderBottom: `2px solid ${T.blanco}`,
             }}>Levantamiento GM</span>
           </nav>
@@ -756,11 +768,11 @@ export default function TableroLGM({ expedientes = [], usuarios = [], actualizad
 
       <div style={{ background: T.blanco, borderBottom: T.borde }}>
         <div style={{
-          maxWidth: 512, margin: '0 auto', alignItems: 'flex-start',
+          maxWidth: 512, margin: '0 auto',
           padding: '11px 16px', display: 'flex', flexDirection: 'column', gap: 10,
         }}>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <Rotulo>Vista</Rotulo>
+          <div style={{ textAlign: 'center' }}><Rotulo>Vista</Rotulo></div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
             {[['todos', 'Vista completa'], ['cobranza', 'Cobranza'], ['tesoreria', 'Tesorería'], ['legal', 'Legal']]
               .map(([k, txt]) => (
                 <Filtro key={k} activa={rol === k} onClick={() => { setRol(k); setEstado(null); }}>{txt}</Filtro>
@@ -851,7 +863,7 @@ export default function TableroLGM({ expedientes = [], usuarios = [], actualizad
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <Rotulo>Plazo</Rotulo>
-            {[['todos', 'Todos'], ['vencido', 'Vencidos'], ['hoy', 'Vencen hoy'], ['congelado', 'En registro público']]
+            {[['todos', 'Todos'], ['vencido', 'Vencidos'], ['hoy', 'Vencen hoy'], ['notaria', 'En notaría'], ['congelado', 'En registro público']]
               .map(([k, txt]) => (
                 <Filtro key={k} activa={plazo === k} onClick={() => setPlazo(k)}>{txt}</Filtro>
               ))}
