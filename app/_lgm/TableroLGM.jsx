@@ -686,6 +686,8 @@ export default function TableroLGM({ expedientes = [], usuarios = [], actualizad
   const [estado, setEstado] = useState(null);
   const [regimen, setRegimen] = useState('todos');
   const [plazo, setPlazo] = useState('todos');
+  const [fechaDesde, setFechaDesde] = useState('');
+  const [fechaHasta, setFechaHasta] = useState('');
   const [verAnulados, setVerAnulados] = useState(false);
   const [busqueda, setBusqueda] = useState('');
 
@@ -725,10 +727,18 @@ export default function TableroLGM({ expedientes = [], usuarios = [], actualizad
       if (plazo === 'hoy' && !venceHoy(e)) return false;
       if (plazo === 'notaria' && e.estado !== 'EN NOTARÍA') return false;
       if (plazo === 'congelado' && !congelado(e)) return false;
+      if (plazo === 'personalizado') {
+        if (!e.fechaSolicitud) return false;
+        const d = new Date(e.fechaSolicitud);
+        if (isNaN(d)) return false;
+        const diaISO = d.toISOString().slice(0, 10);
+        if (fechaDesde && diaISO < fechaDesde) return false;
+        if (fechaHasta && diaISO > fechaHasta) return false;
+      }
       if (q && !`${e.nombre} ${e.doi} ${e.credito} ${e.placa} ${e.id}`.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [porRol, estado, regimen, plazo, busqueda]);
+  }, [porRol, estado, regimen, plazo, busqueda, fechaDesde, fechaHasta]);
 
   // usuario → foto, para pintar los avatares del hilo y de quién registró la solicitud
   const fotos = useMemo(() => {
@@ -863,11 +873,26 @@ export default function TableroLGM({ expedientes = [], usuarios = [], actualizad
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <Rotulo>Plazo</Rotulo>
-            {[['todos', 'Todos'], ['vencido', 'Vencidos'], ['hoy', 'Vencen hoy'], ['notaria', 'En notaría'], ['congelado', 'En registro público']]
+            {[['todos', 'Todos'], ['vencido', 'Vencidos'], ['hoy', 'Vencen hoy'], ['notaria', 'En notaría'], ['congelado', 'En registros']]
               .map(([k, txt]) => (
                 <Filtro key={k} activa={plazo === k} onClick={() => setPlazo(k)}>{txt}</Filtro>
               ))}
           </div>
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <Filtro activa={plazo === 'personalizado'}
+                    onClick={() => setPlazo(plazo === 'personalizado' ? 'todos' : 'personalizado')}>
+              Personalizado
+            </Filtro>
+          </div>
+          {plazo === 'personalizado' && (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input type="date" value={fechaDesde} onChange={(ev) => setFechaDesde(ev.target.value)}
+                     style={{ ...estiloEntrada, flex: 1 }} />
+              <span style={{ color: T.texto2 }}>–</span>
+              <input type="date" value={fechaHasta} onChange={(ev) => setFechaHasta(ev.target.value)}
+                     style={{ ...estiloEntrada, flex: 1 }} />
+            </div>
+          )}
           {totalAnulados > 0 && (
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <Rotulo>Otros</Rotulo>
