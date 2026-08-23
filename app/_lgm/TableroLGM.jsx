@@ -756,15 +756,16 @@ export default function TableroLGM({ expedientes = [], usuarios = [], actualizad
 
       <div style={{ background: T.blanco, borderBottom: T.borde }}>
         <div style={{
-          maxWidth: 512, margin: '0 auto',
-          padding: '11px 16px', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap',
+          maxWidth: 512, margin: '0 auto', alignItems: 'flex-start',
+          padding: '11px 16px', display: 'flex', flexDirection: 'column', gap: 10,
         }}>
-          <Rotulo>Ver como</Rotulo>
-          {[['todos', 'Vista completa'], ['cobranza', 'Cobranza'], ['tesoreria', 'Tesorería'], ['legal', 'Legal']]
-            .map(([k, txt]) => (
-              <Filtro key={k} activa={rol === k} onClick={() => { setRol(k); setEstado(null); }}>{txt}</Filtro>
-            ))}
-          <span style={{ flex: 1 }} />
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <Rotulo>Vista</Rotulo>
+            {[['todos', 'Vista completa'], ['cobranza', 'Cobranza'], ['tesoreria', 'Tesorería'], ['legal', 'Legal']]
+              .map(([k, txt]) => (
+                <Filtro key={k} activa={rol === k} onClick={() => { setRol(k); setEstado(null); }}>{txt}</Filtro>
+              ))}
+          </div>
           <BarraSesion sesion={sesion} setSesion={setSesion} usuarios={usuarios} />
         </div>
       </div>
