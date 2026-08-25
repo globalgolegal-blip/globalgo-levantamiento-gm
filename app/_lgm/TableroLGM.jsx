@@ -160,7 +160,7 @@ function Boton({ children, onClick, primario, peligro, disabled, href }) {
     cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.45 : 1,
     textDecoration: 'none', display: 'inline-block',
   };
-  if (href) return <a href={href} target="_blank" rel="noreferrer" style={estilo}>{children}</a>;
+  if (href) return <a href={href} target="_blank" rel="noopener noreferrer" style={estilo}>{children}</a>;
   return <button onClick={onClick} disabled={disabled} style={estilo}>{children}</button>;
 }
 
@@ -693,10 +693,11 @@ function Ficha({ e, indice, sesion, onListo, fotos }) {
 
 /* ─────────────────────────────── tablero */
 
-export default function TableroLGM({ expedientes = [], usuarios = [], actualizado, error }) {
+export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usuarios = [], actualizado, error }) {
   const router = useRouter();
   const [sesion, setSesion] = useState(null);
   const [aviso, setAviso] = useState('');
+  const [avisoSesion, setAvisoSesion] = useState('');
   const [rol, setRol] = useState('todos');
   const [estado, setEstado] = useState(null);
   const [regimen, setRegimen] = useState('todos');
@@ -706,6 +707,38 @@ export default function TableroLGM({ expedientes = [], usuarios = [], actualizad
   const [verAnulados, setVerAnulados] = useState(false);
   const [reintentando, setReintentando] = useState(false);
   const [busqueda, setBusqueda] = useState('');
+
+  // El detalle completo (expedientes) no viene del servidor sin sesión — se
+  // pide aparte, ya identificado, con la acción "listar".
+  const [expedientes, setExpedientes] = useState([]);
+  const [cargandoLista, setCargandoLista] = useState(false);
+  const [errorLista, setErrorLista] = useState('');
+
+  async function cargarListado(token) {
+    setCargandoLista(true);
+    const r = await llamar({ accion: 'listar', token });
+    setCargandoLista(false);
+    if (!r.ok) {
+      if (r.motivo === 'conexion') {
+        // Problema de transporte, no del token: se mantiene la sesión y se
+        // ofrece reintentar, en vez de forzar un PIN nuevo por una falla ajena.
+        setErrorLista(r.error || 'No se pudo cargar el listado. Intenta de nuevo.');
+        return;
+      }
+      // Cualquier otro rechazo es el token: vencido o inválido. No dejar una
+      // lista vacía que parezca "sin resultados" — eso confunde y ya costó
+      // media prueba. Se vuelve a la vista anónima y se pide el PIN de nuevo.
+      localStorage.removeItem(LLAVE_SESION);
+      setSesion(null);
+      setExpedientes([]);
+      setErrorLista('');
+      setAvisoSesion('Tu sesión venció. Vuelve a poner tu PIN.');
+      return;
+    }
+    setErrorLista('');
+    setAvisoSesion('');
+    setExpedientes(r.expedientes || []);
+  }
 
   useEffect(() => {
     try {
@@ -718,9 +751,18 @@ export default function TableroLGM({ expedientes = [], usuarios = [], actualizad
     } catch { /* sesión ilegible: se pide de nuevo */ }
   }, []);
 
+  // Se dispara con cualquier sesión nueva (restaurada o recién ingresada) y
+  // también al cerrar sesión, para volver a la vista anónima sin detalle.
+  useEffect(() => {
+    if (sesion?.token) cargarListado(sesion.token);
+    else setExpedientes([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sesion?.token]);
+
   function trasAccion(mensaje) {
     setAviso(mensaje || 'Cambio guardado.');
     router.refresh();
+    if (sesion?.token) cargarListado(sesion.token);
     setTimeout(() => setAviso(''), 6000);
   }
 
@@ -773,22 +815,40 @@ export default function TableroLGM({ expedientes = [], usuarios = [], actualizad
         <div style={{ maxWidth: 512, margin: '0 auto', padding: '0 16px' }}>
           <div style={{ fontSize: 15, fontWeight: 500 }}>GoTrack</div>
           <div style={{ fontSize: 11, color: T.azulNav }}>Levantamiento de Garantía Mobiliaria</div>
-          <nav style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginTop: 13 }}>
-            <a href={GOTRACK} style={{
-              fontSize: 12, color: T.azulNav, textDecoration: 'none', textAlign: 'center', paddingBottom: 10,
+          <div style={{
+            display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between',
+            gap: 10, marginTop: 13,
+          }}>
+            <nav style={{
+              display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10,
+              flex: '1 1 260px', minWidth: 0,
             }}>
-              Desembolso
-            </a>
-            <a href={GOTRACK + '/ventas-segunda'} style={{
-              fontSize: 12, color: T.azulNav, textDecoration: 'none', textAlign: 'center', paddingBottom: 10,
+              <a href={GOTRACK} style={{
+                fontSize: 12, color: T.azulNav, textDecoration: 'none', textAlign: 'center', paddingBottom: 10,
+              }}>
+                Desembolso
+              </a>
+              <a href={GOTRACK + '/ventas-segunda'} style={{
+                fontSize: 12, color: T.azulNav, textDecoration: 'none', textAlign: 'center', paddingBottom: 10,
+              }}>
+                Ventas de segunda
+              </a>
+              <span style={{
+                fontSize: 12, color: T.blanco, fontWeight: 500, textAlign: 'center',
+                paddingBottom: 10, borderBottom: `2px solid ${T.blanco}`,
+              }}>Levantamiento GM</span>
+            </nav>
+
+            {/* La acción más usada del día: siempre visible, con o sin sesión —
+                registrar una solicitud es abrir un formulario, no editar el tablero. */}
+            <a href={FORM_COBRANZA} target="_blank" rel="noopener noreferrer" style={{
+              background: T.blanco, color: T.navy, fontWeight: 600, fontSize: 13,
+              padding: '9px 16px', borderRadius: T.rPill, textDecoration: 'none',
+              whiteSpace: 'nowrap', marginBottom: 10,
             }}>
-              Ventas de segunda
+              Registrar nueva solicitud
             </a>
-            <span style={{
-              fontSize: 12, color: T.blanco, fontWeight: 500, textAlign: 'center',
-              paddingBottom: 10, borderBottom: `2px solid ${T.blanco}`,
-            }}>Levantamiento GM</span>
-          </nav>
+          </div>
         </div>
       </header>
 
@@ -817,6 +877,13 @@ export default function TableroLGM({ expedientes = [], usuarios = [], actualizad
           }}>{aviso}</div>
         )}
 
+        {avisoSesion && (
+          <div style={{
+            background: T.ambarBg, border: `0.5px solid ${T.ambar}`, borderRadius: T.rCard,
+            padding: '11px 14px', marginBottom: 14, fontSize: 13, color: T.ambar, fontWeight: 500,
+          }}>{avisoSesion}</div>
+        )}
+
         {error && (
           <div style={{
             background: T.rojoBg, border: `0.5px solid ${T.rojoLinea}`, borderLeft: `4px solid ${T.rojo}`,
@@ -834,21 +901,39 @@ export default function TableroLGM({ expedientes = [], usuarios = [], actualizad
           </div>
         )}
 
-        {alertados.length > 0 && (
-          <div style={{
-            background: T.rojoBg, border: `0.5px solid ${T.rojoLinea}`, borderLeft: `4px solid ${T.rojo}`,
-            borderRadius: T.rCard, padding: '12px 15px', marginBottom: 14,
-          }}>
-            <div style={{ fontWeight: 600, color: T.rojo, fontSize: 13 }}>
-              {alertados.length === 1
-                ? '1 expediente de Ruta A sin cargo de notaría'
-                : `${alertados.length} expedientes de Ruta A sin cargo de notaría`}
+        {sesion ? (
+          alertados.length > 0 && (
+            <div style={{
+              background: T.rojoBg, border: `0.5px solid ${T.rojoLinea}`, borderLeft: `4px solid ${T.rojo}`,
+              borderRadius: T.rCard, padding: '12px 15px', marginBottom: 14,
+            }}>
+              <div style={{ fontWeight: 600, color: T.rojo, fontSize: 13 }}>
+                {alertados.length === 1
+                  ? '1 expediente de Ruta A sin cargo de notaría'
+                  : `${alertados.length} expedientes de Ruta A sin cargo de notaría`}
+              </div>
+              <div style={{ fontSize: 13, marginTop: 2 }}>
+                Llevan más de 2 días hábiles en trámite y Legal aún no registra la fecha de ingreso a notaría:{' '}
+                {alertados.map((e) => e.id).join(', ')}.
+              </div>
             </div>
-            <div style={{ fontSize: 13, marginTop: 2 }}>
-              Llevan más de 2 días hábiles en trámite y Legal aún no registra la fecha de ingreso a notaría:{' '}
-              {alertados.map((e) => e.id).join(', ')}.
+          )
+        ) : (
+          alertas > 0 && (
+            <div style={{
+              background: T.rojoBg, border: `0.5px solid ${T.rojoLinea}`, borderLeft: `4px solid ${T.rojo}`,
+              borderRadius: T.rCard, padding: '12px 15px', marginBottom: 14,
+            }}>
+              <div style={{ fontWeight: 600, color: T.rojo, fontSize: 13 }}>
+                {alertas === 1
+                  ? '1 expediente de Ruta A sin cargo de notaría'
+                  : `${alertas} expedientes de Ruta A sin cargo de notaría`}
+              </div>
+              <div style={{ fontSize: 13, marginTop: 2 }}>
+                Identifícate para ver cuáles son.
+              </div>
             </div>
-          </div>
+          )
         )}
 
         <div style={{
@@ -856,7 +941,13 @@ export default function TableroLGM({ expedientes = [], usuarios = [], actualizad
           gap: 10, marginBottom: 18,
         }}>
           {TARJETAS.map(([clave, rotulo, color]) => {
-            const n = porRol.filter((e) => e.estado === clave).length;
+            // Sin sesión no hay detalle expediente por expediente, pero cada
+            // estado pertenece a una sola área — se puede filtrar por rol
+            // sumando conteos, igual que con el detalle completo.
+            const enVista = rol === 'todos' || (ESTADOS_POR_ROL[rol] || []).includes(clave);
+            const n = sesion
+              ? porRol.filter((e) => e.estado === clave).length
+              : (enVista ? (conteos[clave] || 0) : 0);
             const sel = estado === clave;
             return (
               <button key={clave} onClick={() => setEstado(sel ? null : clave)} style={{
@@ -873,56 +964,65 @@ export default function TableroLGM({ expedientes = [], usuarios = [], actualizad
           })}
         </div>
 
-        <div style={{
-          background: T.blanco, border: T.borde, borderRadius: T.rCard,
-          padding: '13px 15px', marginBottom: 14, display: 'flex', flexDirection: 'column', gap: 11,
-        }}>
-          <input
-            type="search" value={busqueda} onChange={(ev) => setBusqueda(ev.target.value)}
-            placeholder="Buscar por DOI, nombre, N° de crédito o placa…"
-            aria-label="Buscar expedientes"
-            style={{
-              width: '100%', border: T.borde, background: T.crema, color: T.texto,
-              borderRadius: T.rInput, padding: '9px 14px', fontSize: 13, fontFamily: 'inherit',
-            }}
-          />
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <Rotulo>Régimen</Rotulo>
-            {[['todos', 'Todos'], ['nueva', 'DL 1400 · SIGM'], ['antigua', 'Ley 28677']].map(([k, txt]) => (
-              <Filtro key={k} activa={regimen === k} onClick={() => setRegimen(k)}>{txt}</Filtro>
-            ))}
-          </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <Rotulo>Plazo</Rotulo>
-            {[['todos', 'Todos'], ['vencido', 'Vencidos'], ['hoy', 'Vencen hoy'], ['notaria', 'En notaría'], ['congelado', 'En registros']]
-              .map(([k, txt]) => (
-                <Filtro key={k} activa={plazo === k} onClick={() => setPlazo(k)}>{txt}</Filtro>
-              ))}
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <Filtro activa={plazo === 'personalizado'}
-                    onClick={() => setPlazo(plazo === 'personalizado' ? 'todos' : 'personalizado')}>
-              Personalizado
-            </Filtro>
-          </div>
-          {plazo === 'personalizado' && (
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <input type="date" value={fechaDesde} onChange={(ev) => setFechaDesde(ev.target.value)}
-                     style={{ ...estiloEntrada, flex: 1 }} />
-              <span style={{ color: T.texto2 }}>–</span>
-              <input type="date" value={fechaHasta} onChange={(ev) => setFechaHasta(ev.target.value)}
-                     style={{ ...estiloEntrada, flex: 1 }} />
-            </div>
-          )}
-          {totalAnulados > 0 && (
+        {sesion ? (
+          <div style={{
+            background: T.blanco, border: T.borde, borderRadius: T.rCard,
+            padding: '13px 15px', marginBottom: 14, display: 'flex', flexDirection: 'column', gap: 11,
+          }}>
+            <input
+              type="search" value={busqueda} onChange={(ev) => setBusqueda(ev.target.value)}
+              placeholder="Buscar por DOI, nombre, N° de crédito o placa…"
+              aria-label="Buscar expedientes"
+              style={{
+                width: '100%', border: T.borde, background: T.crema, color: T.texto,
+                borderRadius: T.rInput, padding: '9px 14px', fontSize: 13, fontFamily: 'inherit',
+              }}
+            />
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <Rotulo>Otros</Rotulo>
-              <Filtro activa={verAnulados} onClick={() => { setVerAnulados(!verAnulados); setEstado(null); }}>
-                Anulados ({totalAnulados})
+              <Rotulo>Régimen</Rotulo>
+              {[['todos', 'Todos'], ['nueva', 'DL 1400 · SIGM'], ['antigua', 'Ley 28677']].map(([k, txt]) => (
+                <Filtro key={k} activa={regimen === k} onClick={() => setRegimen(k)}>{txt}</Filtro>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <Rotulo>Plazo</Rotulo>
+              {[['todos', 'Todos'], ['vencido', 'Vencidos'], ['hoy', 'Vencen hoy'], ['notaria', 'En notaría'], ['congelado', 'En registros']]
+                .map(([k, txt]) => (
+                  <Filtro key={k} activa={plazo === k} onClick={() => setPlazo(k)}>{txt}</Filtro>
+                ))}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <Filtro activa={plazo === 'personalizado'}
+                      onClick={() => setPlazo(plazo === 'personalizado' ? 'todos' : 'personalizado')}>
+                Personalizado
               </Filtro>
             </div>
-          )}
-        </div>
+            {plazo === 'personalizado' && (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input type="date" value={fechaDesde} onChange={(ev) => setFechaDesde(ev.target.value)}
+                       style={{ ...estiloEntrada, flex: 1 }} />
+                <span style={{ color: T.texto2 }}>–</span>
+                <input type="date" value={fechaHasta} onChange={(ev) => setFechaHasta(ev.target.value)}
+                       style={{ ...estiloEntrada, flex: 1 }} />
+              </div>
+            )}
+            {totalAnulados > 0 && (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <Rotulo>Otros</Rotulo>
+                <Filtro activa={verAnulados} onClick={() => { setVerAnulados(!verAnulados); setEstado(null); }}>
+                  Anulados ({totalAnulados})
+                </Filtro>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div style={{
+            background: T.blanco, border: T.borde, borderRadius: T.rCard,
+            padding: '13px 15px', marginBottom: 14, fontSize: 13, color: T.texto2,
+          }}>
+            Identifícate para buscar y filtrar por régimen o plazo.
+          </div>
+        )}
 
         <div style={{
           display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
@@ -939,7 +1039,29 @@ export default function TableroLGM({ expedientes = [], usuarios = [], actualizad
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {lista.length === 0 ? (
+          {!sesion ? (
+            <div style={{
+              background: T.blanco, border: T.borde, borderRadius: T.rCard,
+              padding: '16px 18px', fontSize: 13, color: T.texto2,
+            }}>
+              Identifícate arriba para ver el detalle de los expedientes.
+            </div>
+          ) : cargandoLista ? (
+            <div style={{
+              background: T.blanco, border: T.borde, borderRadius: T.rCard,
+              padding: '16px 18px', fontSize: 13, color: T.texto2,
+            }}>
+              Cargando expedientes…
+            </div>
+          ) : errorLista ? (
+            <div style={{
+              background: T.rojoBg, border: `0.5px solid ${T.rojoLinea}`, borderLeft: `4px solid ${T.rojo}`,
+              borderRadius: T.rCard, padding: '12px 15px',
+            }}>
+              <div style={{ fontWeight: 600, color: T.rojo, fontSize: 13, marginBottom: 10 }}>{errorLista}</div>
+              <Boton onClick={() => cargarListado(sesion.token)}>Reintentar</Boton>
+            </div>
+          ) : lista.length === 0 ? (
             <div style={{
               background: T.blanco, border: T.borde, borderRadius: T.rCard,
               padding: '16px 18px', fontSize: 13, color: T.texto2,
@@ -952,12 +1074,6 @@ export default function TableroLGM({ expedientes = [], usuarios = [], actualizad
             ))
           )}
         </div>
-
-        <a href={FORM_COBRANZA} target="_blank" rel="noreferrer" style={{
-          display: 'inline-block', marginTop: 16, background: T.navy, color: T.blanco,
-          border: `0.5px solid ${T.navy}`, borderRadius: T.rInput,
-          padding: '8px 14px', fontSize: 13, fontWeight: 500, textDecoration: 'none',
-        }}>Registrar nueva solicitud</a>
 
         {actualizado && (
           <p style={{ fontSize: 11.5, color: T.texto3, marginTop: 20 }}>

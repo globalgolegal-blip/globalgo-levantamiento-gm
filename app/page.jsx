@@ -35,18 +35,25 @@ async function traerConReintentos(url) {
   throw ultimoError;
 }
 
-async function traerExpedientes() {
+// Sin sesión, la hoja solo manda conteos y colores — nunca nombres, DOI ni
+// montos de cliente. El detalle completo se pide aparte, ya identificado,
+// con la acción "listar" (ver app/_lgm/TableroLGM.jsx).
+const VACIO = { conteos: {}, carga: {}, alertas: 0, usuarios: [], actualizado: null, error: null };
+
+async function traerResumen() {
   const url = process.env.LGM_API_URL;
   const secreto = process.env.LGM_SECRETO;
 
   if (!url || !secreto) {
-    return { error: 'Faltan LGM_API_URL o LGM_SECRETO', expedientes: [], usuarios: [], actualizado: null };
+    return { ...VACIO, error: 'Faltan LGM_API_URL o LGM_SECRETO' };
   }
   try {
     const data = await traerConReintentos(url + '?k=' + encodeURIComponent(secreto));
     if (data.error) throw new Error(data.error);
     return {
-      expedientes: data.expedientes || [],
+      conteos: data.conteos || {},
+      carga: data.carga || {},
+      alertas: data.alertas || 0,
       usuarios: data.usuarios || [],
       actualizado: data.actualizado,
       error: null,
@@ -54,18 +61,17 @@ async function traerExpedientes() {
   } catch (e) {
     // Tras varios intentos, lo más probable es que el servicio no esté
     // respondiendo — no necesariamente que LGM_API_URL o LGM_SECRETO estén mal.
-    return {
-      error: 'El servicio no respondió tras varios intentos (' + e.message + ')',
-      expedientes: [], usuarios: [], actualizado: null,
-    };
+    return { ...VACIO, error: 'El servicio no respondió tras varios intentos (' + e.message + ')' };
   }
 }
 
 export default async function Page() {
-  const { expedientes, usuarios, actualizado, error } = await traerExpedientes();
+  const { conteos, carga, alertas, usuarios, actualizado, error } = await traerResumen();
   return (
     <TableroLGM
-      expedientes={expedientes}
+      conteos={conteos}
+      carga={carga}
+      alertas={alertas}
       usuarios={usuarios}
       actualizado={actualizado}
       error={error}
