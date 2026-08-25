@@ -1,6 +1,36 @@
 import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 
+const espera = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// El Apps Script a veces tarda en despertar y responde 404/5xx mientras arranca.
+// Reintenta con espera creciente antes de darlo por caído de verdad.
+async function llamarConReintentos(url, cuerpo) {
+  const backoffs = [400, 1200];
+  let ultimoError;
+
+  for (let intento = 0; intento <= backoffs.length; intento++) {
+    try {
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(cuerpo),
+        redirect: 'follow',
+        cache: 'no-store',
+      });
+      if (r.status >= 500 || r.status === 404) {
+        ultimoError = new Error('respondió ' + r.status);
+      } else {
+        return await r.json();
+      }
+    } catch (e) {
+      ultimoError = e;
+    }
+    if (intento < backoffs.length) await espera(backoffs[intento]);
+  }
+  throw ultimoError;
+}
+
 /**
  * Puente entre el tablero y la hoja.
  *
@@ -27,22 +57,18 @@ export async function POST(req) {
   }
 
   try {
-    const r = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ ...cuerpo, secreto }),
-      redirect: 'follow',
-      cache: 'no-store',
-    });
-    const data = await r.json();
+    const data = await llamarConReintentos(url, { ...cuerpo, secreto });
 
     // Si algo cambió en la hoja, el tablero tiene que dejar de mostrar lo viejo.
     if (data.ok && cuerpo.accion !== 'entrar') revalidatePath('/');
 
     return NextResponse.json(data);
   } catch (e) {
+    // Este mensaje es del transporte, nunca del PIN o de los datos: el servidor
+    // de Apps Script no respondió tras varios intentos. No confundir con
+    // "No autorizado", que sí viene de la hoja cuando el PIN está mal.
     return NextResponse.json(
-      { ok: false, error: 'No se pudo escribir en la hoja: ' + e.message },
+      { ok: false, error: 'El servicio no respondió tras varios intentos. Intenta de nuevo en un momento.' },
       { status: 502 }
     );
   }

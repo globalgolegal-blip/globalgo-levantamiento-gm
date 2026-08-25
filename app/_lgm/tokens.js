@@ -71,8 +71,8 @@ export const TARJETAS = [
 // Qué estados ve cada área.
 export const ESTADOS_POR_ROL = {
   cobranza:  ['SOLICITADO', 'OBS. TESORERÍA', 'OBS. LEGAL', 'LEVANTADO', 'CERRADO'],
-  tesoreria: ['SOLICITADO', 'OBS. TESORERÍA', 'PAGO OK'],
-  legal:     ['PAGO OK', 'EN TRÁMITE', 'EN NOTARÍA', 'EN SUNARP', 'OBS. LEGAL', 'LEVANTADO'],
+  tesoreria: ['SOLICITADO', 'OBS. TESORERÍA', 'PAGO OK', 'CERRADO'],
+  legal:     ['PAGO OK', 'EN TRÁMITE', 'EN NOTARÍA', 'EN SUNARP', 'OBS. LEGAL', 'LEVANTADO', 'CERRADO', 'ANULADO'],
 };
 
 // Motivos de observación. Reemplázalos por los que el equipo ve de verdad.

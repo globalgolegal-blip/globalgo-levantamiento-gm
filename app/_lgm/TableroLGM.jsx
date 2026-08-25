@@ -11,6 +11,12 @@ const FORM_COBRANZA    = process.env.NEXT_PUBLIC_LGM_FORM_COBRANZA    || '#';
 const FORM_CIERRE      = process.env.NEXT_PUBLIC_LGM_FORM_CIERRE      || '#';
 const FORM_COMPROBANTE = process.env.NEXT_PUBLIC_LGM_FORM_COMPROBANTE || '#';
 
+// Prefijan el ID del expediente en el formulario, para que nadie tenga que
+// copiarlo a mano — un ID mal tecleado hace que el disparador no encuentre
+// la fila y descarte el envío en silencio.
+const linkCierre = (id) => `${FORM_CIERRE}?usp=pp_url&entry.829618641=${encodeURIComponent(id)}`;
+const linkComprobante = (id) => `${FORM_COMPROBANTE}?usp=pp_url&entry.289993708=${encodeURIComponent(id)}`;
+
 const LLAVE_SESION = 'lgm_sesion';
 
 // Esta web vive aparte de GoTrack; la barra enlaza de vuelta a los otros módulos.
@@ -36,7 +42,14 @@ const fechaHora = (v) => {
   });
 };
 
-const hoyISO = () => new Date().toISOString().slice(0, 10);
+// Componentes de fecha LOCALES, no toISOString(): esa convierte a UTC, y de 7 p.m.
+// en adelante en Lima eso ya es el día siguiente.
+const fechaLocalISO = (d) => {
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
+
+const hoyISO = () => fechaLocalISO(new Date());
 const soles = (n) => 'S/ ' + Number(n || 0).toFixed(2);
 
 const anulado = (e) => e.estado === 'ANULADO';
@@ -351,7 +364,7 @@ function Acciones({ e, sesion, onListo }) {
       botones.push(<Boton key="t" primario onClick={() => abrir('titulo')}>Registrar N° de título</Boton>);
     }
     if ((e.estado === 'EN TRÁMITE' && esNueva) || e.estado === 'EN SUNARP') {
-      botones.push(<Boton key="c" primario href={FORM_CIERRE}>Cargar boleta y cerrar</Boton>);
+      botones.push(<Boton key="c" primario href={linkCierre(e.id)}>Cargar boleta y cerrar</Boton>);
     }
     if (['PAGO OK', 'EN TRÁMITE', 'EN NOTARÍA', 'EN SUNARP'].includes(e.estado)) {
       botones.push(<Boton key="o" onClick={() => abrir('observar')}>Observar</Boton>);
@@ -362,7 +375,7 @@ function Acciones({ e, sesion, onListo }) {
   }
   if (area === 'cobranza' && e.estado.startsWith('OBS.')) {
     botones.push(<Boton key="r" primario onClick={() => abrir('responder')}>Responder la observación</Boton>);
-    botones.push(<Boton key="cp" href={FORM_COMPROBANTE}>Reemplazar comprobante</Boton>);
+    botones.push(<Boton key="cp" href={linkComprobante(e.id)}>Reemplazar comprobante</Boton>);
   }
 
   if (!botones.length && !panel) {
@@ -380,6 +393,7 @@ function Acciones({ e, sesion, onListo }) {
 
   return (
     <div>
+      {error && <p style={{ fontSize: 12, color: T.rojo, marginBottom: 8 }}>{error}</p>}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{botones}</div>
 
       {panel === 'observar' && (
@@ -400,10 +414,10 @@ function Acciones({ e, sesion, onListo }) {
             placeholder="Escribe qué tiene que corregir Cobranza. Sin este texto no se puede observar."
             style={{ ...estiloEntrada, minHeight: 70, resize: 'vertical', marginBottom: 8 }}
           />
-          <p style={{ fontSize: 12, color: error ? T.rojo : T.naranjaTx, marginBottom: 8 }}>
-            {error || (listoObservar ? 'Listo para observar.'
+          <p style={{ fontSize: 12, color: T.naranjaTx, marginBottom: 8 }}>
+            {listoObservar ? 'Listo para observar.'
               : !motivo ? 'Falta elegir el motivo.'
-              : 'Escribe al menos una indicación concreta.')}
+              : 'Escribe al menos una indicación concreta.'}
           </p>
           <div style={{ display: 'flex', gap: 8 }}>
             <Boton primario disabled={!listoObservar || cargando}
@@ -429,7 +443,6 @@ function Acciones({ e, sesion, onListo }) {
             placeholder="Explica qué corregiste. Si cambiaste el comprobante, dilo acá también."
             style={{ ...estiloEntrada, minHeight: 70, resize: 'vertical', marginBottom: 8 }}
           />
-          {error && <p style={{ fontSize: 12, color: T.rojo, marginBottom: 8 }}>{error}</p>}
           <div style={{ display: 'flex', gap: 8 }}>
             <Boton primario disabled={texto.trim().length < 10 || cargando}
                    onClick={() => enviar('responder', { texto })}>
@@ -448,7 +461,6 @@ function Acciones({ e, sesion, onListo }) {
           <Campo etiqueta="Fecha de ingreso a notaría Quintanilla">
             <input type="date" value={dia} onChange={(ev) => setDia(ev.target.value)} style={estiloEntrada} />
           </Campo>
-          {error && <p style={{ fontSize: 12, color: T.rojo, marginBottom: 8 }}>{error}</p>}
           <div style={{ display: 'flex', gap: 8 }}>
             <Boton primario disabled={!dia || cargando} onClick={() => enviar('notaria', { fecha: dia })}>
               {cargando ? 'Guardando…' : 'Registrar'}
@@ -474,7 +486,6 @@ function Acciones({ e, sesion, onListo }) {
             Al registrar el título, el reloj de GO se detiene y los días pasan a contarse como
             tiempo en registro público. Sin número de título el reloj sigue corriendo.
           </p>
-          {error && <p style={{ fontSize: 12, color: T.rojo, marginBottom: 8 }}>{error}</p>}
           <div style={{ display: 'flex', gap: 8 }}>
             <Boton primario disabled={valor.trim().length < 4 || cargando}
                    onClick={() => enviar('titulo', { titulo: valor, fecha: dia })}>
@@ -511,7 +522,6 @@ function Acciones({ e, sesion, onListo }) {
             <input type="checkbox" checked={avisar} onChange={(ev) => setAvisar(ev.target.checked)} style={{ marginTop: 2 }} />
             <span>Avisar al cliente por correo. Déjalo sin marcar si es una solicitud de prueba o duplicada.</span>
           </label>
-          {error && <p style={{ fontSize: 12, color: T.rojo, marginBottom: 8 }}>{error}</p>}
           <div style={{ display: 'flex', gap: 8 }}>
             <Boton peligro disabled={!listoAnular || cargando}
                    onClick={() => enviar('anular', { motivo, texto, avisarCliente: avisar })}>
@@ -606,7 +616,8 @@ function Ficha({ e, indice, sesion, onListo, fotos }) {
               <dt style={{ color: T.texto2 }}>Vueltas</dt><dd style={{ margin: 0 }}>{e.vueltas || 0}</dd>
               {e.asesor && (<>
                 <dt style={{ color: T.texto2 }}>Registrado por</dt>
-                <dd style={{ margin: 0, display: 'flex', gap: 7, alignItems: 'center' }}>
+                <dd style={{ margin: 0, display: 'flex', gap: 7, alignItems: 'center' }}
+                    title={e.asesorCorreo && e.asesorCorreo !== e.asesor ? e.asesorCorreo : undefined}>
                   <Avatar usuario={e.asesor} foto={fotos[e.asesor]} tam={20} />{e.asesor}
                 </dd>
               </>)}
@@ -693,6 +704,7 @@ export default function TableroLGM({ expedientes = [], usuarios = [], actualizad
   const [fechaDesde, setFechaDesde] = useState('');
   const [fechaHasta, setFechaHasta] = useState('');
   const [verAnulados, setVerAnulados] = useState(false);
+  const [reintentando, setReintentando] = useState(false);
   const [busqueda, setBusqueda] = useState('');
 
   useEffect(() => {
@@ -735,7 +747,7 @@ export default function TableroLGM({ expedientes = [], usuarios = [], actualizad
         if (!e.fechaSolicitud) return false;
         const d = new Date(e.fechaSolicitud);
         if (isNaN(d)) return false;
-        const diaISO = d.toISOString().slice(0, 10);
+        const diaISO = fechaLocalISO(d);
         if (fechaDesde && diaISO < fechaDesde) return false;
         if (fechaHasta && diaISO > fechaHasta) return false;
       }
@@ -811,9 +823,14 @@ export default function TableroLGM({ expedientes = [], usuarios = [], actualizad
             borderRadius: T.rCard, padding: '12px 15px', marginBottom: 14,
           }}>
             <div style={{ fontWeight: 600, color: T.rojo, fontSize: 13 }}>No se pudo leer la hoja</div>
-            <div style={{ fontSize: 13, marginTop: 2 }}>
-              {error}. Revisa que LGM_API_URL y LGM_SECRETO coincidan con la aplicación web de Apps Script.
-            </div>
+            <div style={{ fontSize: 13, marginTop: 2, marginBottom: 10 }}>{error}</div>
+            <Boton disabled={reintentando} onClick={() => {
+              setReintentando(true);
+              router.refresh();
+              setTimeout(() => setReintentando(false), 2000);
+            }}>
+              {reintentando ? 'Reintentando…' : 'Reintentar'}
+            </Boton>
           </div>
         )}
 
@@ -824,8 +841,8 @@ export default function TableroLGM({ expedientes = [], usuarios = [], actualizad
           }}>
             <div style={{ fontWeight: 600, color: T.rojo, fontSize: 13 }}>
               {alertados.length === 1
-                ? '1 expediente de Ruta B sin cargo de notaría'
-                : `${alertados.length} expedientes de Ruta B sin cargo de notaría`}
+                ? '1 expediente de Ruta A sin cargo de notaría'
+                : `${alertados.length} expedientes de Ruta A sin cargo de notaría`}
             </div>
             <div style={{ fontSize: 13, marginTop: 2 }}>
               Llevan más de 2 días hábiles en trámite y Legal aún no registra la fecha de ingreso a notaría:{' '}

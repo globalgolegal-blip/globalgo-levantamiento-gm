@@ -9,6 +9,32 @@ export const metadata = {
 // mostrar el estado real de la hoja, no una copia de hace un minuto.
 export const dynamic = 'force-dynamic';
 
+const espera = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// El Apps Script a veces tarda en despertar y responde 404/5xx mientras arranca.
+// Reintenta con espera creciente antes de darlo por caído de verdad.
+async function traerConReintentos(url) {
+  const backoffs = [400, 1200];
+  let ultimoError;
+
+  for (let intento = 0; intento <= backoffs.length; intento++) {
+    try {
+      const r = await fetch(url, { cache: 'no-store' });
+      if (r.status >= 500 || r.status === 404) {
+        ultimoError = new Error('respondió ' + r.status);
+      } else if (!r.ok) {
+        throw new Error('respondió ' + r.status);
+      } else {
+        return await r.json();
+      }
+    } catch (e) {
+      ultimoError = e;
+    }
+    if (intento < backoffs.length) await espera(backoffs[intento]);
+  }
+  throw ultimoError;
+}
+
 async function traerExpedientes() {
   const url = process.env.LGM_API_URL;
   const secreto = process.env.LGM_SECRETO;
@@ -17,9 +43,7 @@ async function traerExpedientes() {
     return { error: 'Faltan LGM_API_URL o LGM_SECRETO', expedientes: [], usuarios: [], actualizado: null };
   }
   try {
-    const r = await fetch(url + '?k=' + encodeURIComponent(secreto), { cache: 'no-store' });
-    if (!r.ok) throw new Error('La hoja respondió ' + r.status);
-    const data = await r.json();
+    const data = await traerConReintentos(url + '?k=' + encodeURIComponent(secreto));
     if (data.error) throw new Error(data.error);
     return {
       expedientes: data.expedientes || [],
@@ -28,7 +52,12 @@ async function traerExpedientes() {
       error: null,
     };
   } catch (e) {
-    return { error: e.message, expedientes: [], usuarios: [], actualizado: null };
+    // Tras varios intentos, lo más probable es que el servicio no esté
+    // respondiendo — no necesariamente que LGM_API_URL o LGM_SECRETO estén mal.
+    return {
+      error: 'El servicio no respondió tras varios intentos (' + e.message + ')',
+      expedientes: [], usuarios: [], actualizado: null,
+    };
   }
 }
 
