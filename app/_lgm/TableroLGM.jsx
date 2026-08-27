@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  T, COLOR_ESTADO, FONDO_ESTADO, ETIQUETA_ESTADO, TARJETAS, ESTADOS_POR_ROL, MOTIVOS, MOTIVOS_ANULAR, MIN_TEXTO,
+  T, COLOR_ESTADO, FONDO_ESTADO, ESTADO, TARJETAS, ESTADOS_POR_ROL, MOTIVOS, MOTIVOS_ANULAR, MIN_TEXTO,
 } from './tokens';
 
 // Solo quedan los formularios que suben archivos.
@@ -636,7 +636,7 @@ function Ficha({ e, indice, sesion, onListo, fotos }) {
                 {e.placa ? `· ${e.id}` : e.id}
               </span>
             </span>
-            <Pastilla texto={ETIQUETA_ESTADO[e.estado] || e.estado} fondo={bgEstado} color={txEstado} />
+            <Pastilla texto={ESTADO[e.estado]?.insignia || e.estado} fondo={bgEstado} color={txEstado} />
             {vencido(e) && <Pastilla texto="⚠ Vencido" fondo={T.rojoBg} color={T.rojo} />}
             {venceHoy(e) && <Pastilla texto="⚠ Vence hoy" fondo={T.ambarBg} color={T.ambar} />}
             {e.alerta && <Pastilla texto="Sin cargo de notaría" fondo={T.rojoBg} color={T.rojo} />}
@@ -1025,7 +1025,7 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
           gap: 10, marginBottom: 18,
         }}>
           {TARJETAS.map(([clave, color]) => {
-            const rotulo = ETIQUETA_ESTADO[clave] || clave;
+            const rotulo = ESTADO[clave]?.contador || clave;
             // Sin sesión no hay detalle expediente por expediente, pero cada
             // estado pertenece a una sola área — se puede filtrar por rol
             // sumando conteos, igual que con el detalle completo.
@@ -1087,7 +1087,7 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
                 <Rotulo>Plazo</Rotulo>
                 {[
                   ['todos', 'Todos'], ['vencido', 'Vencidos'], ['hoy', 'Vencen hoy'],
-                  ['notaria', ETIQUETA_ESTADO['EN NOTARÍA']], ['congelado', ETIQUETA_ESTADO['EN SUNARP']],
+                  ['notaria', ESTADO['EN NOTARÍA'].contador], ['congelado', ESTADO['EN SUNARP'].contador],
                 ].map(([k, txt]) => (
                   <Filtro key={k} activa={plazo === k} onClick={() => setPlazo(k)}>{txt}</Filtro>
                 ))}
@@ -1123,7 +1123,7 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
           margin: '2px 2px 9px', gap: 12, flexWrap: 'wrap',
         }}>
           <h2 style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>
-            {estado ? (ETIQUETA_ESTADO[estado] || 'Expedientes') : 'Expedientes'}
+            {estado ? (ESTADO[estado]?.contador || 'Expedientes') : 'Expedientes'}
           </h2>
           <span style={{ fontSize: 12, color: T.texto2 }}>
             {lista.length} {lista.length === 1 ? 'expediente' : 'expedientes'}

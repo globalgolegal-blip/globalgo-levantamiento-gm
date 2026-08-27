@@ -61,26 +61,27 @@ export const FONDO_ESTADO = {
   'ANULADO':        [T.neutroBg, T.texto3],
 };
 
-// Lo que se lee en pantalla no siempre es el valor guardado: EN SUNARP se lee
-// REGISTROS y CERRADO se lee FINALIZADO. El valor interno (columna "estado" de
-// la hoja, COLOR_ESTADO, FONDO_ESTADO, ESTADOS_POR_ROL) no cambia — solo esto.
-export const ETIQUETA_ESTADO = {
-  'SOLICITADO':     'SOLICITADO',
-  'OBS. TESORERÍA': 'OBS. TESORERÍA',
-  'PAGO OK':        'PAGO OK',
-  'EN TRÁMITE':     'TRÁMITE',
-  'EN NOTARÍA':     'NOTARÍA',
-  'EN SUNARP':      'REGISTROS',
-  'OBS. LEGAL':     'OBS. LEGAL',
-  'LEVANTADO':      'LEVANTADO',
-  'CERRADO':        'FINALIZADO',
-  'ANULADO':        'ANULADO',
+// Dos vocabularios, no uno — de ahí la sobrecorrección anterior:
+// - insignia: nombra el ESTADO de un expediente (la pastilla de la ficha).
+//   TRÁMITE, NOTARÍA, REGISTROS, FINALIZADO.
+// - contador: nombra una CANTIDAD de expedientes (tarjetas y filtros).
+//   Plural, minúscula, y el "En" sí corresponde acá: "3 en trámite".
+// Una sola fila por estado para que las dos formas no puedan desincronizarse.
+export const ESTADO = {
+  'SOLICITADO':     { insignia: 'SOLICITADO',     contador: 'Solicitados' },
+  'OBS. TESORERÍA': { insignia: 'OBS. TESORERÍA', contador: 'Obs. Tesorería' },
+  'PAGO OK':        { insignia: 'PAGO OK',        contador: 'Pago validado' },
+  'EN TRÁMITE':     { insignia: 'TRÁMITE',        contador: 'En trámite' },
+  'EN NOTARÍA':     { insignia: 'NOTARÍA',        contador: 'En notaría' },
+  'EN SUNARP':      { insignia: 'REGISTROS',      contador: 'En registros' },
+  'OBS. LEGAL':     { insignia: 'OBS. LEGAL',     contador: 'Obs. Legal' },
+  'CERRADO':        { insignia: 'FINALIZADO',     contador: 'Finalizados' },
+  'ANULADO':        { insignia: 'ANULADO',        contador: 'Anulados' },
 };
 
 // Tarjetas de conteo del tablero, en el orden en que avanza un expediente.
-// Solo la clave y el color: la etiqueta sale siempre de ETIQUETA_ESTADO,
-// arriba. Nada de texto escrito a mano acá — es la segunda lista de nombres
-// la que hace que estas dos se separen apenas alguien renombra una sola.
+// Solo la clave y el color: la etiqueta sale siempre de ESTADO[clave].contador,
+// arriba. Nada de texto escrito a mano acá.
 export const TARJETAS = [
   ['SOLICITADO',     T.azul],
   ['OBS. TESORERÍA', T.naranja],
