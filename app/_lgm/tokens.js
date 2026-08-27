@@ -78,18 +78,21 @@ export const ETIQUETA_ESTADO = {
 };
 
 // Tarjetas de conteo del tablero, en el orden en que avanza un expediente.
+// Solo la clave y el color: la etiqueta sale siempre de ETIQUETA_ESTADO,
+// arriba. Nada de texto escrito a mano acá — es la segunda lista de nombres
+// la que hace que estas dos se separen apenas alguien renombra una sola.
 export const TARJETAS = [
-  ['SOLICITADO',     'Solicitados',    T.azul],
-  ['OBS. TESORERÍA', 'Obs. Tesorería', T.naranja],
-  ['PAGO OK',        'Pago validado',  T.azul],
-  ['EN TRÁMITE',     'En trámite',     T.azul],
-  ['EN NOTARÍA',     'En notaría',     T.azul],
-  ['EN SUNARP',      'Registros',      T.linea2],
-  ['OBS. LEGAL',     'Obs. Legal',     T.naranja],
-  ['CERRADO',        'Finalizados',    T.navy],
+  ['SOLICITADO',     T.azul],
+  ['OBS. TESORERÍA', T.naranja],
+  ['PAGO OK',        T.azul],
+  ['EN TRÁMITE',     T.azul],
+  ['EN NOTARÍA',     T.azul],
+  ['EN SUNARP',      T.linea2],
+  ['OBS. LEGAL',     T.naranja],
+  ['CERRADO',        T.navy],
   // Última, en gris apagado: un anulado no es trabajo pendiente y no debe
   // pedir atención visual, pero tiene que ser encontrable, no invisible.
-  ['ANULADO',        'Anulados',       T.linea2],
+  ['ANULADO',        T.linea2],
 ];
 
 // Qué estados ve cada área.

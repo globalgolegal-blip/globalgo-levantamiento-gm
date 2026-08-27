@@ -42,6 +42,15 @@ const fechaHora = (v) => {
   });
 };
 
+// Para la línea de tiempo, compacta: sin año, es de este año casi siempre.
+const fechaCorta = (v) => {
+  if (!v) return '';
+  const d = new Date(v);
+  return isNaN(d) ? '' : d.toLocaleString('es-PE', {
+    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: ZONA,
+  });
+};
+
 // Componentes de fecha LOCALES, no toISOString(): esa convierte a UTC, y de 7 p.m.
 // en adelante en Lima eso ya es el día siguiente.
 const fechaLocalISO = (d) => {
@@ -70,6 +79,27 @@ function chipPlazo(e) {
   if (vencido(e)) return [`Vencido · ${e.diasGo} d de ${e.sla}`, T.rojoBg, T.rojo];
   if (venceHoy(e)) return [`Vence hoy · ${e.diasGo} d de ${e.sla}`, T.ambarBg, T.ambar];
   return [`En plazo · ${e.diasGo} d de ${e.sla}`, T.azulBg, T.azul];
+}
+
+// La tercera línea de la tarjeta: qué pasó último y de quién depende ahora,
+// en una frase — no una fila de campos. Las vueltas se dicen acá, no en una
+// insignia aparte.
+function resumenCorto(e) {
+  const vuelta = e.vueltas > 0 ? ` · ${e.vueltas}ª vuelta` : '';
+  if (anulado(e)) return `Anulado el ${fecha(e.fechaCierre)}`;
+  if (e.estado === 'CERRADO' || e.estado === 'LEVANTADO') return `Finalizado el ${fecha(e.fechaCierre)}`;
+
+  const responsable = `le toca a ${e.responsable}`;
+  switch (e.estado) {
+    case 'SOLICITADO':     return `Solicitado el ${fecha(e.fechaSolicitud)} · ${responsable}${vuelta}`;
+    case 'OBS. TESORERÍA': return `Observado por Tesorería · ${responsable}${vuelta}`;
+    case 'PAGO OK':        return `Pago validado el ${fecha(e.fechaValidacion)} · ${responsable}${vuelta}`;
+    case 'EN TRÁMITE':     return `En trámite desde el ${fecha(e.fechaValidacion)} · ${responsable}${vuelta}`;
+    case 'EN NOTARÍA':     return `Ingresó el ${fecha(e.notaria)} · ${responsable}${vuelta}`;
+    case 'EN SUNARP':      return `Presentado el ${fecha(e.fechaPresentacion)} · ${responsable}${vuelta}`;
+    case 'OBS. LEGAL':     return `Observado por Legal · ${responsable}${vuelta}`;
+    default:               return `${responsable}${vuelta}`;
+  }
 }
 
 function hitos(e) {
@@ -592,31 +622,32 @@ function Ficha({ e, indice, sesion, onListo, fotos }) {
           display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 1,
         }}>{indice}</span>
 
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12, fontWeight: 600, color: T.texto }}>
-              {e.id}
+            <span style={{ display: 'flex', gap: 5, alignItems: 'baseline', minWidth: 0 }}>
+              {e.placa && (
+                <b style={{ fontSize: 14.5, color: T.texto, whiteSpace: 'nowrap' }}>{e.placa}</b>
+              )}
+              <span style={{
+                fontFamily: 'ui-monospace, monospace', whiteSpace: 'nowrap',
+                fontSize: e.placa ? 11 : 14, fontWeight: e.placa ? 400 : 600,
+                color: e.placa ? T.texto3 : T.texto,
+              }}>
+                {e.placa ? `· ${e.id}` : e.id}
+              </span>
             </span>
             <Pastilla texto={ETIQUETA_ESTADO[e.estado] || e.estado} fondo={bgEstado} color={txEstado} />
+            {vencido(e) && <Pastilla texto="⚠ Vencido" fondo={T.rojoBg} color={T.rojo} />}
+            {venceHoy(e) && <Pastilla texto="⚠ Vence hoy" fondo={T.ambarBg} color={T.ambar} />}
             {e.alerta && <Pastilla texto="Sin cargo de notaría" fondo={T.rojoBg} color={T.rojo} />}
-            {e.vueltas > 0 && <Pastilla texto={`${e.vueltas}ª vuelta`} fondo={T.naranjaBg} color={T.naranjaTx} />}
           </div>
 
-          <div style={{ fontSize: 14, fontWeight: 600, color: T.texto }}>{e.nombre}</div>
-
-          <div style={{ display: 'flex', gap: 13, flexWrap: 'wrap', fontSize: 12, color: T.texto2 }}>
-            <span>DOI <b style={{ color: T.texto, fontWeight: 500 }}>{e.doi}</b></span>
-            <span>Crédito <b style={{ color: T.texto, fontWeight: 500 }}>{e.credito}</b></span>
-            <span style={{ fontSize: 11, border: `0.5px solid ${T.linea}`, borderRadius: 5, padding: '1px 6px' }}>
-              {e.regimen === 'NUEVA' ? 'DL 1400 · SIGM' : 'Ley 28677'}
-            </span>
-            <span><b style={{ color: T.texto, fontWeight: 500 }}>{soles(e.monto)}</b></span>
+          <div style={{ fontSize: 13, color: T.texto2 }}>
+            <span style={{ color: T.texto, fontWeight: 600 }}>{e.nombre}</span>
+            {' · DOI '}{e.doi}
           </div>
 
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', fontSize: 12, color: T.texto2 }}>
-            <Pastilla texto={chip} fondo={chipBg} color={chipTx} />
-            <span>Responsable: <b style={{ color: T.texto, fontWeight: 500 }}>{e.responsable}</b></span>
-          </div>
+          <div style={{ fontSize: 12, color: T.texto2 }}>{resumenCorto(e)}</div>
         </div>
 
         <span style={{
@@ -633,7 +664,11 @@ function Ficha({ e, indice, sesion, onListo, fotos }) {
           <section>
             <Rotulo>Datos del expediente</Rotulo>
             <dl style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 14px', fontSize: 13, margin: '8px 0 0' }}>
+              <dt style={{ color: T.texto2 }}>Plazo</dt>
+              <dd style={{ margin: 0 }}><Pastilla texto={chip} fondo={chipBg} color={chipTx} /></dd>
+              <dt style={{ color: T.texto2 }}>Responsable</dt><dd style={{ margin: 0 }}>{e.responsable}</dd>
               <dt style={{ color: T.texto2 }}>Placa</dt><dd style={{ margin: 0 }}>{e.placa || '—'}</dd>
+              <dt style={{ color: T.texto2 }}>N° de crédito</dt><dd style={{ margin: 0 }}>{e.credito}</dd>
               <dt style={{ color: T.texto2 }}>Fecha del crédito</dt><dd style={{ margin: 0 }}>{fecha(e.fechaCredito)}</dd>
               <dt style={{ color: T.texto2 }}>Régimen</dt>
               <dd style={{ margin: 0 }}>
@@ -659,18 +694,17 @@ function Ficha({ e, indice, sesion, onListo, fotos }) {
           <section>
             <Rotulo>Línea de tiempo</Rotulo>
             <ul style={{
-              listStyle: 'none', margin: '8px 0 0', padding: '0 0 0 17px',
-              borderLeft: `2px solid ${T.linea}`, display: 'flex', flexDirection: 'column', gap: 12,
+              listStyle: 'none', margin: '8px 0 0', padding: '0 0 0 15px',
+              borderLeft: `2px solid ${T.linea}`, display: 'flex', flexDirection: 'column', gap: 7,
             }}>
               {hitos(e).map(([texto, cuando, tipo], i) => (
-                <li key={i} style={{ position: 'relative', fontSize: 13 }}>
+                <li key={i} style={{ position: 'relative', fontSize: 12.5, color: T.texto, lineHeight: 1.4 }}>
                   <span style={{
-                    position: 'absolute', left: -24, top: 5, width: 9, height: 9, borderRadius: '50%',
+                    position: 'absolute', left: -20, top: 5, width: 8, height: 8, borderRadius: '50%',
                     background: tipo === 'ahora' ? T.azul : tipo === 'alerta' ? T.rojo : T.navy,
                     border: `2px solid ${T.crema}`,
                   }} />
-                  <b style={{ display: 'block', fontWeight: 600, color: T.texto }}>{texto}</b>
-                  {cuando && <span style={{ color: T.texto2, fontSize: 12 }}>{fechaHora(cuando)}</span>}
+                  {texto}{cuando && <span style={{ color: T.texto3 }}> · {fechaCorta(cuando)}</span>}
                 </li>
               ))}
             </ul>
@@ -990,7 +1024,8 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
           display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
           gap: 10, marginBottom: 18,
         }}>
-          {TARJETAS.map(([clave, rotulo, color]) => {
+          {TARJETAS.map(([clave, color]) => {
+            const rotulo = ETIQUETA_ESTADO[clave] || clave;
             // Sin sesión no hay detalle expediente por expediente, pero cada
             // estado pertenece a una sola área — se puede filtrar por rol
             // sumando conteos, igual que con el detalle completo.
@@ -1050,10 +1085,12 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
               </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <Rotulo>Plazo</Rotulo>
-                {[['todos', 'Todos'], ['vencido', 'Vencidos'], ['hoy', 'Vencen hoy'], ['notaria', 'Notaría'], ['congelado', 'Registros']]
-                  .map(([k, txt]) => (
-                    <Filtro key={k} activa={plazo === k} onClick={() => setPlazo(k)}>{txt}</Filtro>
-                  ))}
+                {[
+                  ['todos', 'Todos'], ['vencido', 'Vencidos'], ['hoy', 'Vencen hoy'],
+                  ['notaria', ETIQUETA_ESTADO['EN NOTARÍA']], ['congelado', ETIQUETA_ESTADO['EN SUNARP']],
+                ].map(([k, txt]) => (
+                  <Filtro key={k} activa={plazo === k} onClick={() => setPlazo(k)}>{txt}</Filtro>
+                ))}
               </div>
               <div style={{ display: 'flex', justifyContent: 'center' }}>
                 <Filtro activa={plazo === 'personalizado'}
@@ -1086,7 +1123,7 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
           margin: '2px 2px 9px', gap: 12, flexWrap: 'wrap',
         }}>
           <h2 style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>
-            {estado ? (TARJETAS.find((t) => t[0] === estado) || [, 'Expedientes'])[1] : 'Expedientes'}
+            {estado ? (ETIQUETA_ESTADO[estado] || 'Expedientes') : 'Expedientes'}
           </h2>
           <span style={{ fontSize: 12, color: T.texto2 }}>
             {lista.length} {lista.length === 1 ? 'expediente' : 'expedientes'}
