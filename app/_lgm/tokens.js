@@ -56,6 +56,22 @@ export const FONDO_ESTADO = {
   'ANULADO':        [T.neutroBg, T.texto3],
 };
 
+// Lo que se lee en pantalla no siempre es el valor guardado: EN SUNARP se lee
+// REGISTROS y CERRADO se lee FINALIZADO. El valor interno (columna "estado" de
+// la hoja, COLOR_ESTADO, FONDO_ESTADO, ESTADOS_POR_ROL) no cambia — solo esto.
+export const ETIQUETA_ESTADO = {
+  'SOLICITADO':     'SOLICITADO',
+  'OBS. TESORERÍA': 'OBS. TESORERÍA',
+  'PAGO OK':        'PAGO OK',
+  'EN TRÁMITE':     'TRÁMITE',
+  'EN NOTARÍA':     'NOTARÍA',
+  'EN SUNARP':      'REGISTROS',
+  'OBS. LEGAL':     'OBS. LEGAL',
+  'LEVANTADO':      'LEVANTADO',
+  'CERRADO':        'FINALIZADO',
+  'ANULADO':        'ANULADO',
+};
+
 // Tarjetas de conteo del tablero, en el orden en que avanza un expediente.
 export const TARJETAS = [
   ['SOLICITADO',     'Solicitados',    T.azul],
@@ -63,9 +79,9 @@ export const TARJETAS = [
   ['PAGO OK',        'Pago validado',  T.azul],
   ['EN TRÁMITE',     'En trámite',     T.azul],
   ['EN NOTARÍA',     'En notaría',     T.azul],
-  ['EN SUNARP',      'En SUNARP',      T.linea2],
+  ['EN SUNARP',      'Registros',      T.linea2],
   ['OBS. LEGAL',     'Obs. Legal',     T.naranja],
-  ['CERRADO',        'Cerrados',       T.navy],
+  ['CERRADO',        'Finalizados',    T.navy],
 ];
 
 // Qué estados ve cada área.

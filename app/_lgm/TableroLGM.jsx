@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  T, COLOR_ESTADO, FONDO_ESTADO, TARJETAS, ESTADOS_POR_ROL, MOTIVOS, MOTIVOS_ANULAR,
+  T, COLOR_ESTADO, FONDO_ESTADO, ETIQUETA_ESTADO, TARJETAS, ESTADOS_POR_ROL, MOTIVOS, MOTIVOS_ANULAR,
 } from './tokens';
 
 // Solo quedan los formularios que suben archivos.
@@ -52,6 +52,9 @@ const fechaLocalISO = (d) => {
 const hoyISO = () => fechaLocalISO(new Date());
 const soles = (n) => 'S/ ' + Number(n || 0).toFixed(2);
 
+// Solo letras y números: "0821WC" y "0821-WC" tienen que encontrar lo mismo.
+const normalizarBusqueda = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
 const anulado = (e) => e.estado === 'ANULADO';
 const activo = (e) => !['CERRADO', 'LEVANTADO', 'ANULADO'].includes(e.estado);
 const congelado = (e) => e.estado === 'EN SUNARP' || (!!e.titulo && !e.fechaInscripcion);
@@ -61,7 +64,7 @@ const venceHoy = (e) => activo(e) && !congelado(e) && e.sla > 0 && e.diasGo === 
 function chipPlazo(e) {
   if (anulado(e)) return ['Anulado', T.neutroBg, T.texto3];
   if (congelado(e)) return [`${e.diasRegistro} d en registro público · reloj detenido`, T.neutroBg, T.texto2];
-  if (e.estado === 'CERRADO') return [`Cerrado en ${e.diasGo} d`, T.neutroBg, T.navy];
+  if (e.estado === 'CERRADO') return [`Finalizado en ${e.diasGo} d`, T.neutroBg, T.navy];
   if (e.estado === 'LEVANTADO') return [`Levantado en ${e.diasGo} d`, T.neutroBg, T.navy];
   if (!e.sla) return [`${e.diasGo} d`, T.neutroBg, T.texto2];
   if (vencido(e)) return [`Vencido · ${e.diasGo} d de ${e.sla}`, T.rojoBg, T.rojo];
@@ -382,7 +385,7 @@ function Acciones({ e, sesion, onListo }) {
     return (
       <p style={{ fontSize: 12, color: T.texto2 }}>
         {anulado(e) ? 'Expediente anulado. No admite cambios.'
-          : e.estado === 'CERRADO' ? 'Expediente cerrado. No admite cambios.'
+          : e.estado === 'CERRADO' ? 'Expediente finalizado. No admite cambios.'
           : `Este expediente le toca a ${e.responsable}.`}
       </p>
     );
@@ -565,7 +568,7 @@ function Ficha({ e, indice, sesion, onListo, fotos }) {
             <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12, fontWeight: 600, color: T.texto }}>
               {e.id}
             </span>
-            <Pastilla texto={e.estado} fondo={bgEstado} color={txEstado} />
+            <Pastilla texto={ETIQUETA_ESTADO[e.estado] || e.estado} fondo={bgEstado} color={txEstado} />
             {e.alerta && <Pastilla texto="Sin cargo de notaría" fondo={T.rojoBg} color={T.rojo} />}
             {e.vueltas > 0 && <Pastilla texto={`${e.vueltas}ª vuelta`} fondo={T.naranjaBg} color={T.naranjaTx} />}
           </div>
@@ -777,7 +780,7 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
   );
 
   const lista = useMemo(() => {
-    const q = busqueda.trim().toLowerCase();
+    const q = normalizarBusqueda(busqueda);
     return porRol.filter((e) => {
       if (estado && e.estado !== estado) return false;
       if (regimen !== 'todos' && e.regimen !== regimen.toUpperCase()) return false;
@@ -793,7 +796,7 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
         if (fechaDesde && diaISO < fechaDesde) return false;
         if (fechaHasta && diaISO > fechaHasta) return false;
       }
-      if (q && !`${e.nombre} ${e.doi} ${e.credito} ${e.placa} ${e.id}`.toLowerCase().includes(q)) return false;
+      if (q && ![e.nombre, e.doi, e.credito, e.placa, e.id].some((campo) => normalizarBusqueda(campo).includes(q))) return false;
       return true;
     });
   }, [porRol, estado, regimen, plazo, busqueda, fechaDesde, fechaHasta]);
@@ -971,7 +974,7 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
           }}>
             <input
               type="search" value={busqueda} onChange={(ev) => setBusqueda(ev.target.value)}
-              placeholder="Buscar por DOI, nombre, N° de crédito o placa…"
+              placeholder="Buscar por placa, DOI, nombre o N° de crédito…"
               aria-label="Buscar expedientes"
               style={{
                 width: '100%', border: T.borde, background: T.crema, color: T.texto,
@@ -986,7 +989,7 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <Rotulo>Plazo</Rotulo>
-              {[['todos', 'Todos'], ['vencido', 'Vencidos'], ['hoy', 'Vencen hoy'], ['notaria', 'En notaría'], ['congelado', 'En registros']]
+              {[['todos', 'Todos'], ['vencido', 'Vencidos'], ['hoy', 'Vencen hoy'], ['notaria', 'Notaría'], ['congelado', 'Registros']]
                 .map(([k, txt]) => (
                   <Filtro key={k} activa={plazo === k} onClick={() => setPlazo(k)}>{txt}</Filtro>
                 ))}
