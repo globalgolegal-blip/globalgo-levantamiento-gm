@@ -1,6 +1,11 @@
 // Paleta y medidas de GoTrack, tomadas del CSS de producción.
 // Si algún día cambian los colores del sistema, se cambian acá y no en los componentes.
 
+// El servidor exige el mismo mínimo en cuatro comparaciones (TEXTO_MINIMO).
+// Si este número y ese se separan, el panel deja confirmar y el servidor
+// rechaza — un botón que se activa y falla, peor que uno que no se activa.
+export const MIN_TEXTO = 5;
+
 export const T = {
   navy: '#1A2238',
   crema: '#F1EFE8',
@@ -82,6 +87,9 @@ export const TARJETAS = [
   ['EN SUNARP',      'Registros',      T.linea2],
   ['OBS. LEGAL',     'Obs. Legal',     T.naranja],
   ['CERRADO',        'Finalizados',    T.navy],
+  // Última, en gris apagado: un anulado no es trabajo pendiente y no debe
+  // pedir atención visual, pero tiene que ser encontrable, no invisible.
+  ['ANULADO',        'Anulados',       T.linea2],
 ];
 
 // Qué estados ve cada área.

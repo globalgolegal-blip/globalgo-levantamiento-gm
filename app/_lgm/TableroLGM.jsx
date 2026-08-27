@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  T, COLOR_ESTADO, FONDO_ESTADO, ETIQUETA_ESTADO, TARJETAS, ESTADOS_POR_ROL, MOTIVOS, MOTIVOS_ANULAR,
+  T, COLOR_ESTADO, FONDO_ESTADO, ETIQUETA_ESTADO, TARJETAS, ESTADOS_POR_ROL, MOTIVOS, MOTIVOS_ANULAR, MIN_TEXTO,
 } from './tokens';
 
 // Solo quedan los formularios que suben archivos.
@@ -325,6 +325,7 @@ function Acciones({ e, sesion, onListo }) {
   const [avisar, setAvisar] = useState(false);
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
+  const [confirmarReabrir, setConfirmarReabrir] = useState(false);
 
   const area = sesion?.area;
   const esNueva = e.regimen === 'NUEVA';
@@ -375,6 +376,25 @@ function Acciones({ e, sesion, onListo }) {
     if (activo(e)) {
       botones.push(<Boton key="a" peligro onClick={() => abrir('anular')}>Anular</Boton>);
     }
+    // Reabrir cambia el estado de un expediente y no se deshace solo — no es
+    // un clic suelto, pero tampoco necesita un panel: un paso de confirmación
+    // en el mismo lugar alcanza. Es además el único botón en un anulado, así
+    // que un clic despistado no puede caer directo sobre la acción.
+    if (anulado(e)) {
+      if (confirmarReabrir) {
+        botones.push(
+          <span key="re" style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, color: T.texto2 }}>
+            ¿Reabrir?
+            <Boton primario disabled={cargando} onClick={() => enviar('reabrir')}>
+              {cargando ? 'Reabriendo…' : 'Sí'}
+            </Boton>
+            <Boton onClick={() => setConfirmarReabrir(false)}>Cancelar</Boton>
+          </span>
+        );
+      } else {
+        botones.push(<Boton key="re" onClick={() => setConfirmarReabrir(true)}>Reabrir expediente</Boton>);
+      }
+    }
   }
   if (area === 'cobranza' && e.estado.startsWith('OBS.')) {
     botones.push(<Boton key="r" primario onClick={() => abrir('responder')}>Responder la observación</Boton>);
@@ -391,8 +411,9 @@ function Acciones({ e, sesion, onListo }) {
     );
   }
 
-  const listoObservar = motivo && texto.trim().length >= 10;
-  const listoAnular = motivo && texto.trim().length >= 10;
+  const faltanTexto = Math.max(0, MIN_TEXTO - texto.trim().length);
+  const listoObservar = motivo && faltanTexto === 0;
+  const listoAnular = motivo && faltanTexto === 0;
 
   return (
     <div>
@@ -420,7 +441,7 @@ function Acciones({ e, sesion, onListo }) {
           <p style={{ fontSize: 12, color: T.naranjaTx, marginBottom: 8 }}>
             {listoObservar ? 'Listo para observar.'
               : !motivo ? 'Falta elegir el motivo.'
-              : 'Escribe al menos una indicación concreta.'}
+              : `Faltan ${faltanTexto} caracteres.`}
           </p>
           <div style={{ display: 'flex', gap: 8 }}>
             <Boton primario disabled={!listoObservar || cargando}
@@ -446,8 +467,11 @@ function Acciones({ e, sesion, onListo }) {
             placeholder="Explica qué corregiste. Si cambiaste el comprobante, dilo acá también."
             style={{ ...estiloEntrada, minHeight: 70, resize: 'vertical', marginBottom: 8 }}
           />
+          <p style={{ fontSize: 12, color: T.azul, marginBottom: 8 }}>
+            {faltanTexto === 0 ? 'Listo para enviar.' : `Faltan ${faltanTexto} caracteres.`}
+          </p>
           <div style={{ display: 'flex', gap: 8 }}>
-            <Boton primario disabled={texto.trim().length < 10 || cargando}
+            <Boton primario disabled={faltanTexto > 0 || cargando}
                    onClick={() => enviar('responder', { texto })}>
               {cargando ? 'Guardando…' : 'Enviar corrección'}
             </Boton>
@@ -521,6 +545,11 @@ function Acciones({ e, sesion, onListo }) {
             placeholder="Explica por qué se anula. Queda en la bitácora con tu nombre."
             style={{ ...estiloEntrada, minHeight: 64, resize: 'vertical', marginBottom: 8 }}
           />
+          <p style={{ fontSize: 12, color: T.rojo, marginBottom: 8 }}>
+            {listoAnular ? 'Listo para anular.'
+              : !motivo ? 'Falta elegir el motivo.'
+              : `Faltan ${faltanTexto} caracteres.`}
+          </p>
           <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12.5, marginBottom: 10 }}>
             <input type="checkbox" checked={avisar} onChange={(ev) => setAvisar(ev.target.checked)} style={{ marginTop: 2 }} />
             <span>Avisar al cliente por correo. Déjalo sin marcar si es una solicitud de prueba o duplicada.</span>
@@ -707,7 +736,6 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
   const [plazo, setPlazo] = useState('todos');
   const [fechaDesde, setFechaDesde] = useState('');
   const [fechaHasta, setFechaHasta] = useState('');
-  const [verAnulados, setVerAnulados] = useState(false);
   const [reintentando, setReintentando] = useState(false);
   const [busqueda, setBusqueda] = useState('');
 
@@ -769,9 +797,17 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
     setTimeout(() => setAviso(''), 6000);
   }
 
+  // Con texto en el buscador, Vista/Régimen/Plazo no se aplican — se atenúan
+  // para que no se vean activos sin estarlo, pero no se desactivan: al borrar
+  // el texto vuelven a valer tal como estaban.
+  const buscando = normalizarBusqueda(busqueda).length > 0;
+
+  // Ver Anulados es simplemente elegir el estado ANULADO desde su tarjeta,
+  // igual que cualquier otro estado — sin un interruptor aparte que haya que
+  // mantener sincronizado.
   const vivos = useMemo(
-    () => expedientes.filter((e) => (verAnulados ? anulado(e) : !anulado(e))),
-    [expedientes, verAnulados]
+    () => expedientes.filter((e) => (estado === 'ANULADO' ? anulado(e) : !anulado(e))),
+    [expedientes, estado]
   );
 
   const porRol = useMemo(
@@ -781,6 +817,16 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
 
   const lista = useMemo(() => {
     const q = normalizarBusqueda(busqueda);
+
+    // La búsqueda es el escape de todos los filtros — rol, estado, régimen,
+    // plazo, anulados o no. Un expediente que el buscador no encuentra es,
+    // en la práctica, un expediente perdido.
+    if (q) {
+      return expedientes.filter((e) =>
+        [e.nombre, e.doi, e.credito, e.placa, e.id].some((campo) => normalizarBusqueda(campo).includes(q))
+      );
+    }
+
     return porRol.filter((e) => {
       if (estado && e.estado !== estado) return false;
       if (regimen !== 'todos' && e.regimen !== regimen.toUpperCase()) return false;
@@ -796,10 +842,9 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
         if (fechaDesde && diaISO < fechaDesde) return false;
         if (fechaHasta && diaISO > fechaHasta) return false;
       }
-      if (q && ![e.nombre, e.doi, e.credito, e.placa, e.id].some((campo) => normalizarBusqueda(campo).includes(q))) return false;
       return true;
     });
-  }, [porRol, estado, regimen, plazo, busqueda, fechaDesde, fechaHasta]);
+  }, [expedientes, porRol, estado, regimen, plazo, busqueda, fechaDesde, fechaHasta]);
 
   // usuario → foto, para pintar los avatares del hilo y de quién registró la solicitud
   const fotos = useMemo(() => {
@@ -809,7 +854,6 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
   }, [usuarios]);
 
   const alertados = porRol.filter((e) => e.alerta);
-  const totalAnulados = expedientes.filter(anulado).length;
 
   return (
     <div style={{ minHeight: '100vh', background: T.crema, color: T.texto, fontSize: 14 }}>
@@ -861,7 +905,10 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
           padding: '11px 16px', display: 'flex', flexDirection: 'column', gap: 10,
         }}>
           <div style={{ textAlign: 'center' }}><Rotulo>Vista</Rotulo></div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8,
+            opacity: buscando ? 0.6 : 1, transition: '.15s',
+          }}>
             {[['todos', 'Vista completa'], ['cobranza', 'Cobranza'], ['tesoreria', 'Tesorería'], ['legal', 'Legal']]
               .map(([k, txt]) => (
                 <Filtro key={k} activa={rol === k} onClick={() => { setRol(k); setEstado(null); }}>{txt}</Filtro>
@@ -948,9 +995,14 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
             // estado pertenece a una sola área — se puede filtrar por rol
             // sumando conteos, igual que con el detalle completo.
             const enVista = rol === 'todos' || (ESTADOS_POR_ROL[rol] || []).includes(clave);
-            const n = sesion
-              ? porRol.filter((e) => e.estado === clave).length
-              : (enVista ? (conteos[clave] || 0) : 0);
+            // ANULADO no puede salir de porRol: esa lista excluye los anulados
+            // a propósito salvo que ya se esté viendo esa tarjeta — si contara
+            // desde ahí, la tarjeta mostraría 0 hasta que ya estuviera elegida.
+            const n = clave === 'ANULADO'
+              ? (enVista ? (sesion ? expedientes.filter(anulado).length : (conteos[clave] || 0)) : 0)
+              : sesion
+                ? porRol.filter((e) => e.estado === clave).length
+                : (enVista ? (conteos[clave] || 0) : 0);
             const sel = estado === clave;
             return (
               <button key={clave} onClick={() => setEstado(sel ? null : clave)} style={{
@@ -981,42 +1033,44 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
                 borderRadius: T.rInput, padding: '9px 14px', fontSize: 13, fontFamily: 'inherit',
               }}
             />
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <Rotulo>Régimen</Rotulo>
-              {[['todos', 'Todos'], ['nueva', 'DL 1400 · SIGM'], ['antigua', 'Ley 28677']].map(([k, txt]) => (
-                <Filtro key={k} activa={regimen === k} onClick={() => setRegimen(k)}>{txt}</Filtro>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <Rotulo>Plazo</Rotulo>
-              {[['todos', 'Todos'], ['vencido', 'Vencidos'], ['hoy', 'Vencen hoy'], ['notaria', 'Notaría'], ['congelado', 'Registros']]
-                .map(([k, txt]) => (
-                  <Filtro key={k} activa={plazo === k} onClick={() => setPlazo(k)}>{txt}</Filtro>
-                ))}
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'center' }}>
-              <Filtro activa={plazo === 'personalizado'}
-                      onClick={() => setPlazo(plazo === 'personalizado' ? 'todos' : 'personalizado')}>
-                Personalizado
-              </Filtro>
-            </div>
-            {plazo === 'personalizado' && (
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <input type="date" value={fechaDesde} onChange={(ev) => setFechaDesde(ev.target.value)}
-                       style={{ ...estiloEntrada, flex: 1 }} />
-                <span style={{ color: T.texto2 }}>–</span>
-                <input type="date" value={fechaHasta} onChange={(ev) => setFechaHasta(ev.target.value)}
-                       style={{ ...estiloEntrada, flex: 1 }} />
-              </div>
+            {buscando && (
+              <p style={{ fontSize: 12, color: T.azul, margin: 0 }}>
+                Buscando en todos los expedientes · los filtros no se aplican.
+              </p>
             )}
-            {totalAnulados > 0 && (
+            <div style={{
+              display: 'flex', flexDirection: 'column', gap: 11,
+              opacity: buscando ? 0.6 : 1, transition: '.15s',
+            }}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <Rotulo>Otros</Rotulo>
-                <Filtro activa={verAnulados} onClick={() => { setVerAnulados(!verAnulados); setEstado(null); }}>
-                  Anulados ({totalAnulados})
+                <Rotulo>Régimen</Rotulo>
+                {[['todos', 'Todos'], ['nueva', 'DL 1400 · SIGM'], ['antigua', 'Ley 28677']].map(([k, txt]) => (
+                  <Filtro key={k} activa={regimen === k} onClick={() => setRegimen(k)}>{txt}</Filtro>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <Rotulo>Plazo</Rotulo>
+                {[['todos', 'Todos'], ['vencido', 'Vencidos'], ['hoy', 'Vencen hoy'], ['notaria', 'Notaría'], ['congelado', 'Registros']]
+                  .map(([k, txt]) => (
+                    <Filtro key={k} activa={plazo === k} onClick={() => setPlazo(k)}>{txt}</Filtro>
+                  ))}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'center' }}>
+                <Filtro activa={plazo === 'personalizado'}
+                        onClick={() => setPlazo(plazo === 'personalizado' ? 'todos' : 'personalizado')}>
+                  Personalizado
                 </Filtro>
               </div>
-            )}
+              {plazo === 'personalizado' && (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input type="date" value={fechaDesde} onChange={(ev) => setFechaDesde(ev.target.value)}
+                         style={{ ...estiloEntrada, flex: 1 }} />
+                  <span style={{ color: T.texto2 }}>–</span>
+                  <input type="date" value={fechaHasta} onChange={(ev) => setFechaHasta(ev.target.value)}
+                         style={{ ...estiloEntrada, flex: 1 }} />
+                </div>
+              )}
+            </div>
           </div>
         ) : (
           <div style={{
@@ -1032,9 +1086,7 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
           margin: '2px 2px 9px', gap: 12, flexWrap: 'wrap',
         }}>
           <h2 style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>
-            {verAnulados ? 'Anulados'
-              : estado ? (TARJETAS.find((t) => t[0] === estado) || [, 'Expedientes'])[1]
-              : 'Expedientes'}
+            {estado ? (TARJETAS.find((t) => t[0] === estado) || [, 'Expedientes'])[1] : 'Expedientes'}
           </h2>
           <span style={{ fontSize: 12, color: T.texto2 }}>
             {lista.length} {lista.length === 1 ? 'expediente' : 'expedientes'}
