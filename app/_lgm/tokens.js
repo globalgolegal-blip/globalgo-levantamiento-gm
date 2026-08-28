@@ -79,6 +79,43 @@ export const ESTADO = {
   'ANULADO':        { insignia: 'ANULADO',        contador: 'Anulados' },
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// El estado llega como el texto de una celda, y una celda admite variantes que
+// para una persona son el mismo estado y para `===` no: un espacio de más, un
+// espacio duro que entró al pegar, el acento descompuesto, o minúsculas.
+//
+// El servidor ya contaba con trim() y el tablero comparaba en crudo. De ahí el
+// error de los dos contadores: la hoja decía 1, la tarjeta decía 0, y no era
+// que se quedara vieja — no había forma de que se arreglara sola. Acá el texto
+// se lleva al valor interno UNA sola vez, al entrar, y de ahí en adelante todo
+// el tablero compara valores internos contra valores internos.
+//
+// COLOR_ESTADO es la única tabla que tiene los diez estados (los nueve con
+// tarjeta más LEVANTADO): se usa como lista canónica para no escribir una
+// décima lista de nombres a mano.
+const CANONICOS = Object.keys(COLOR_ESTADO);
+
+// Solo letras y números, sin acentos. Absorbe de una vez el punto de
+// "OBS. LEGAL", el acento de "OBS. TESORERÍA" y cualquier espacio raro. Los
+// diez estados siguen siendo distintos así reducidos —lo comprueba
+// scripts/verificar-contadores.mjs—, o sea que esto no puede fundir dos.
+const esqueleto = (s) => String(s || '')
+  .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+const POR_ESQUELETO = new Map(CANONICOS.map((k) => [esqueleto(k), k]));
+
+/**
+ * Texto de la celda -> valor interno del estado.
+ *
+ * Si no reconoce el valor devuelve el texto recortado, nunca vacío: un estado
+ * que nadie previó tiene que verse en pantalla, no desaparecer del tablero.
+ */
+export function normalizarEstado(v) {
+  const limpio = String(v ?? '').normalize('NFC').replace(/\s+/g, ' ').trim();
+  return POR_ESQUELETO.get(esqueleto(limpio)) || limpio;
+}
+
 // Tarjetas de conteo del tablero, en el orden en que avanza un expediente.
 // Solo la clave y el color: la etiqueta sale siempre de ESTADO[clave].contador,
 // arriba. Nada de texto escrito a mano acá.
