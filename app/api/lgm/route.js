@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { revalidatePath } from 'next/cache';
 
 const espera = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -59,9 +58,16 @@ export async function POST(req) {
   try {
     const data = await llamarConReintentos(url, { ...cuerpo, secreto });
 
-    // Si algo cambió en la hoja, el tablero tiene que dejar de mostrar lo viejo.
-    // "listar" es una lectura: no cambia nada, no vale la pena invalidar por eso.
-    if (data.ok && cuerpo.accion !== 'entrar' && cuerpo.accion !== 'listar') revalidatePath('/');
+    // Acá había un revalidatePath('/') que no hacía nada: app/page.jsx es
+    // force-dynamic y trae la hoja con cache: 'no-store', o sea que la ruta
+    // nunca se guarda en la caché de rutas y no hay nada que invalidar. Se veía
+    // como si los conteos se refrescaran solos después de cada cambio, y no era
+    // así — parte de por qué el tablero iba una acción atrasado.
+    //
+    // Quien refresca de verdad es el cliente: trasAccion() vuelve a pedir el
+    // listado (de donde salen los nueve contadores) y llama a router.refresh()
+    // para la carga por área y las alertas. Si algún día page.jsx deja de ser
+    // force-dynamic, acá hay que volver a invalidar.
 
     return NextResponse.json(data);
   } catch (e) {

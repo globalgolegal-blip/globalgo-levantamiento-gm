@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation';
 import {
   T, COLOR_ESTADO, FONDO_ESTADO, ESTADO, TARJETAS, ESTADOS_POR_ROL, MOTIVOS, MOTIVOS_ANULAR, MIN_TEXTO,
 } from './tokens';
+import {
+  esAnulado as anulado, normalizarExpedientes, normalizarConteos, vivosDe, porRolDe, contadores,
+} from './contar';
 
 // Solo quedan los formularios que suben archivos.
 const FORM_COBRANZA    = process.env.NEXT_PUBLIC_LGM_FORM_COBRANZA    || '#';
@@ -64,7 +67,6 @@ const soles = (n) => 'S/ ' + Number(n || 0).toFixed(2);
 // Solo letras y números: "0821WC" y "0821-WC" tienen que encontrar lo mismo.
 const normalizarBusqueda = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
-const anulado = (e) => e.estado === 'ANULADO';
 const activo = (e) => !['CERRADO', 'LEVANTADO', 'ANULADO'].includes(e.estado);
 const congelado = (e) => e.estado === 'EN SUNARP' || (!!e.titulo && !e.fechaInscripcion);
 const vencido = (e) => activo(e) && !congelado(e) && e.sla > 0 && e.diasGo > e.sla;
@@ -813,6 +815,10 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
   // pide aparte, ya identificado, con la acción "listar".
   const [expedientes, setExpedientes] = useState([]);
   const [cargandoLista, setCargandoLista] = useState(false);
+  // Mientras el detalle viaja, los contadores siguen saliendo de los conteos
+  // del servidor. Pintar 0 en ese hueco es afirmar que no hay nada, y no es
+  // cierto: es que todavía no llegó.
+  const [listadoRecibido, setListadoRecibido] = useState(false);
   const [errorLista, setErrorLista] = useState('');
 
   async function cargarListado(token) {
@@ -832,13 +838,15 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
       localStorage.removeItem(LLAVE_SESION);
       setSesion(null);
       setExpedientes([]);
+      setListadoRecibido(false);
       setErrorLista('');
       setAvisoSesion('Tu sesión venció. Vuelve a poner tu PIN.');
       return;
     }
     setErrorLista('');
     setAvisoSesion('');
-    setExpedientes(r.expedientes || []);
+    setExpedientes(normalizarExpedientes(r.expedientes));
+    setListadoRecibido(true);
   }
 
   useEffect(() => {
@@ -856,7 +864,7 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
   // también al cerrar sesión, para volver a la vista anónima sin detalle.
   useEffect(() => {
     if (sesion?.token) cargarListado(sesion.token);
-    else setExpedientes([]);
+    else { setExpedientes([]); setListadoRecibido(false); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sesion?.token]);
 
@@ -872,17 +880,25 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
   // el texto vuelven a valer tal como estaban.
   const buscando = normalizarBusqueda(busqueda).length > 0;
 
+  // Las claves de los conteos son el texto de la hoja; se pasan a valores
+  // internos antes de que cualquier tarjeta los busque.
+  const conteosNorm = useMemo(() => normalizarConteos(conteos), [conteos]);
+
   // Ver Anulados es simplemente elegir el estado ANULADO desde su tarjeta,
   // igual que cualquier otro estado — sin un interruptor aparte que haya que
   // mantener sincronizado.
-  const vivos = useMemo(
-    () => expedientes.filter((e) => (estado === 'ANULADO' ? anulado(e) : !anulado(e))),
-    [expedientes, estado]
-  );
+  const vivos = useMemo(() => vivosDe(expedientes, estado), [expedientes, estado]);
 
-  const porRol = useMemo(
-    () => (rol === 'todos' ? vivos : vivos.filter((e) => ESTADOS_POR_ROL[rol].includes(e.estado))),
-    [vivos, rol]
+  const porRol = useMemo(() => porRolDe(vivos, rol), [vivos, rol]);
+
+  // Los nueve números de las tarjetas. No reciben `estado`: un contador
+  // cuenta lo que hay en la hoja, no lo que queda después de filtrar la
+  // pantalla — contar sobre `vivos` es lo que hacía que elegir Anulados
+  // pusiera los otros ocho en 0. scripts/verificar-contadores.mjs comprueba
+  // estos mismos números contra el conteo directo de `listar`.
+  const numeros = useMemo(
+    () => contadores({ expedientes, conteos: conteosNorm, listado: listadoRecibido, rol }),
+    [expedientes, conteosNorm, listadoRecibido, rol]
   );
 
   const lista = useMemo(() => {
@@ -1062,18 +1078,7 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
         }}>
           {TARJETAS.map(([clave, color]) => {
             const rotulo = ESTADO[clave]?.contador || clave;
-            // Sin sesión no hay detalle expediente por expediente, pero cada
-            // estado pertenece a una sola área — se puede filtrar por rol
-            // sumando conteos, igual que con el detalle completo.
-            const enVista = rol === 'todos' || (ESTADOS_POR_ROL[rol] || []).includes(clave);
-            // ANULADO no puede salir de porRol: esa lista excluye los anulados
-            // a propósito salvo que ya se esté viendo esa tarjeta — si contara
-            // desde ahí, la tarjeta mostraría 0 hasta que ya estuviera elegida.
-            const n = clave === 'ANULADO'
-              ? (enVista ? (sesion ? expedientes.filter(anulado).length : (conteos[clave] || 0)) : 0)
-              : sesion
-                ? porRol.filter((e) => e.estado === clave).length
-                : (enVista ? (conteos[clave] || 0) : 0);
+            const n = numeros[clave] || 0;
             const sel = estado === clave;
             return (
               <button key={clave} onClick={() => setEstado(sel ? null : clave)} style={{
