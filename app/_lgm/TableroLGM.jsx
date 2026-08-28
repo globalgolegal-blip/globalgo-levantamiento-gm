@@ -102,6 +102,14 @@ function resumenCorto(e) {
   }
 }
 
+// Un chip por archivo del array. Con uno solo, sin número: "Comprobante".
+// Con varios, "Comprobante 1", "Comprobante 2". Array vacío -> sin chips.
+function chipsArchivo(urls, etiqueta) {
+  if (!urls || urls.length === 0) return [];
+  if (urls.length === 1) return [{ href: urls[0], texto: etiqueta }];
+  return urls.map((href, i) => ({ href, texto: `${etiqueta} ${i + 1}` }));
+}
+
 function hitos(e) {
   const l = [];
   if (e.fechaSolicitud)    l.push(['Solicitud registrada por Cobranza', e.fechaSolicitud, 'ok']);
@@ -625,16 +633,25 @@ function Ficha({ e, indice, sesion, onListo, fotos }) {
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={{ display: 'flex', gap: 5, alignItems: 'baseline', minWidth: 0 }}>
-              {e.placa && (
-                <b style={{ fontSize: 14.5, color: T.texto, whiteSpace: 'nowrap' }}>{e.placa}</b>
+              {e.placa ? (
+                <>
+                  <b style={{ fontSize: 14.5, color: T.texto, whiteSpace: 'nowrap' }}>{e.placa}</b>
+                  <span style={{
+                    fontFamily: 'ui-monospace, monospace', fontSize: 11, color: T.texto3, whiteSpace: 'nowrap',
+                  }}>
+                    · {e.id}
+                  </span>
+                </>
+              ) : (
+                // Sin placa, el número de expediente es el único identificador
+                // que hay: lleva el mismo peso visual que la placa, no el de
+                // dato secundario — si no, la tarjeta se ve apagada.
+                <b style={{
+                  fontFamily: 'ui-monospace, monospace', fontSize: 14.5, color: T.texto, whiteSpace: 'nowrap',
+                }}>
+                  {e.id}
+                </b>
               )}
-              <span style={{
-                fontFamily: 'ui-monospace, monospace', whiteSpace: 'nowrap',
-                fontSize: e.placa ? 11 : 14, fontWeight: e.placa ? 400 : 600,
-                color: e.placa ? T.texto3 : T.texto,
-              }}>
-                {e.placa ? `· ${e.id}` : e.id}
-              </span>
             </span>
             <Pastilla texto={ESTADO[e.estado]?.insignia || e.estado} fondo={bgEstado} color={txEstado} />
             {vencido(e) && <Pastilla texto="⚠ Vencido" fondo={T.rojoBg} color={T.rojo} />}
@@ -738,6 +755,25 @@ function Ficha({ e, indice, sesion, onListo, fotos }) {
               </p>
             )}
           </section>
+
+          {((e.comprobante || []).length > 0 || (e.boleta || []).length > 0) && (
+            <section>
+              <Rotulo>Archivos</Rotulo>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+                {[...chipsArchivo(e.comprobante || [], 'Comprobante'), ...chipsArchivo(e.boleta || [], 'Boleta')]
+                  .map((c, i) => (
+                    <a key={i} href={c.href} target="_blank" rel="noopener noreferrer" style={{
+                      display: 'inline-flex', gap: 6, alignItems: 'center', textDecoration: 'none',
+                      fontSize: 12, fontWeight: 500, color: T.texto,
+                      background: T.blanco, border: `0.5px solid ${T.linea2}`, borderRadius: T.rPill,
+                      padding: '5px 12px',
+                    }}>
+                      📎 {c.texto}
+                    </a>
+                  ))}
+              </div>
+            </section>
+          )}
 
           <section>
             <Rotulo>Acciones</Rotulo>
