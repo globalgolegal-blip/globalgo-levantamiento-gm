@@ -16,14 +16,24 @@
 //    del servidor mientras no; nunca las dos a la vez, y nunca un 0 inventado
 //    mientras el detalle viaja.
 //
-// 3. EL ARCHIVO SE VE DESDE CUALQUIER VISTA. ANULADO solo está en la lista de
-//    estados del área Legal, así que a Cobranza y a Tesorería la tarjeta de
-//    Anulados les daba 0 para siempre, con la hoja diciendo otra cosa. Un
-//    anulado no es la cola de trabajo de nadie: no pasa por el filtro de área.
+// 3. LOS CONTADORES SON GLOBALES. Un contador dice cuántos expedientes hay en
+//    ese estado en toda la hoja, y punto. Cuando además filtraban por Vista, la
+//    pantalla se contradecía sola: en Vista Cobranza, con un expediente en EN
+//    NOTARÍA, el contador decía «En notaría: 0» y la ficha de ese expediente
+//    estaba visible debajo al mismo tiempo, porque el buscador ignora los
+//    filtros y el contador no. Filtrar es cosa del LISTADO; contar, no.
+//
+//    De paso desaparece un caso especial: ANULADO tenía que estar exento del
+//    filtro de área para que Cobranza y Tesorería no vieran 0 para siempre. Sin
+//    filtro de área en los contadores, no hay de qué eximirlo.
 
 import { ESTADOS_POR_ROL, TARJETAS, normalizarEstado } from './tokens.js';
 
 export const esAnulado = (e) => e.estado === 'ANULADO';
+
+// Un expediente que todavía puede cambiar. CERRADO, LEVANTADO y ANULADO ya
+// terminaron su recorrido.
+export const esActivo = (e) => !['CERRADO', 'LEVANTADO', 'ANULADO'].includes(e.estado);
 
 /**
  * Estado normalizado al entrar, una sola vez, en el borde de la aplicación.
@@ -48,13 +58,15 @@ export function normalizarConteos(conteos) {
 }
 
 /**
- * ¿Este estado se ve con la Vista puesta en `rol`?
+ * ¿Este estado entra en el LISTADO con la Vista puesta en `rol`?
  *
- * ANULADO se ve siempre: es el archivo, no la cola de trabajo de un área, y la
- * tarjeta tiene que ser encontrable desde cualquier Vista.
+ * Solo para el listado: los contadores no filtran por Vista (regla 3 arriba).
+ *
+ * Ya no hace falta eximir a ANULADO: elegir un estado manda sobre la Vista
+ * (ver porRolDe), y los anulados solo aparecen cuando se eligió su tarjeta.
  */
 export const enLaVista = (estado, rol) =>
-  rol === 'todos' || estado === 'ANULADO' || (ESTADOS_POR_ROL[rol] || []).includes(estado);
+  rol === 'todos' || (ESTADOS_POR_ROL[rol] || []).includes(estado);
 
 // Ver Anulados es elegir el estado ANULADO desde su tarjeta: mientras no esté
 // elegido, los anulados no son parte de la lista. Esto es para LA LISTA de la
@@ -62,8 +74,16 @@ export const enLaVista = (estado, rol) =>
 export const vivosDe = (expedientes, estado) =>
   (expedientes || []).filter((e) => (estado === 'ANULADO' ? esAnulado(e) : !esAnulado(e)));
 
-export const porRolDe = (vivos, rol) =>
-  (rol === 'todos' ? vivos : vivos.filter((e) => enLaVista(e.estado, rol)));
+/**
+ * Filtro de Vista del listado.
+ *
+ * Si la persona eligió un estado desde su tarjeta, esa elección manda sobre la
+ * Vista: es una intención más específica, y así el listado concuerda con el
+ * contador, que es global. No es un override silencioso — el encabezado del
+ * listado dice «mostrando fuera de la Vista X» cuando pasa.
+ */
+export const porRolDe = (vivos, rol, estado = null) =>
+  (rol === 'todos' || estado ? vivos : vivos.filter((e) => enLaVista(e.estado, rol)));
 
 /**
  * Un número por tarjeta.
@@ -72,15 +92,14 @@ export const porRolDe = (vivos, rol) =>
  * se cuenta expediente por expediente; sin él se usan los totales por estado
  * del render del servidor. Nunca las dos fuentes en la misma pintada.
  *
- * No recibe la tarjeta elegida: un contador cuenta lo que hay en la hoja, no lo
- * que quedó después de filtrar la pantalla.
+ * No recibe la Vista ni la tarjeta elegida, a propósito: un contador cuenta lo
+ * que hay en la hoja, no lo que quedó después de filtrar la pantalla. Los dos
+ * filtros viven en el listado, que es donde una persona los puso.
  */
-export function contadores({ expedientes = [], conteos = {}, listado = false, rol = 'todos' }) {
+export function contadores({ expedientes = [], conteos = {}, listado = false }) {
   const out = {};
 
   TARJETAS.forEach(([clave]) => {
-    if (!enLaVista(clave, rol)) { out[clave] = 0; return; }
-
     out[clave] = listado
       ? (expedientes || []).filter((e) => e.estado === clave).length
       : (conteos[clave] || 0);

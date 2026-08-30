@@ -43,6 +43,7 @@ export const COLOR_ESTADO = {
   'EN NOTARÍA':     T.azul,
   'EN SUNARP':      T.linea2,
   'OBS. LEGAL':     T.naranja,
+  'OBS. COBRANZA':  T.naranja,
   'LEVANTADO':      T.navy,
   'CERRADO':        T.navy,
   'ANULADO':        T.linea2,
@@ -56,6 +57,7 @@ export const FONDO_ESTADO = {
   'EN NOTARÍA':     [T.azulBg, T.azul],
   'EN SUNARP':      [T.neutroBg, T.texto2],
   'OBS. LEGAL':     [T.naranjaBg, T.naranjaTx],
+  'OBS. COBRANZA':  [T.naranjaBg, T.naranjaTx],
   'LEVANTADO':      [T.neutroBg, T.navy],
   'CERRADO':        [T.neutroBg, T.navy],
   'ANULADO':        [T.neutroBg, T.texto3],
@@ -75,6 +77,10 @@ export const ESTADO = {
   'EN NOTARÍA':     { insignia: 'NOTARÍA',        contador: 'En notaría' },
   'EN SUNARP':      { insignia: 'REGISTROS',      contador: 'En registros' },
   'OBS. LEGAL':     { insignia: 'OBS. LEGAL',     contador: 'Obs. Legal' },
+  // Cobranza observa un expediente que no está en su escritorio, casi siempre
+  // porque el cliente desistió. El responsable pasa a ser Legal, que lo ve
+  // aparecer en su lista sin que nadie tenga que avisarle.
+  'OBS. COBRANZA':  { insignia: 'OBS. COBRANZA',  contador: 'Obs. Cobranza' },
   'CERRADO':        { insignia: 'FINALIZADO',     contador: 'Finalizados' },
   'ANULADO':        { insignia: 'ANULADO',        contador: 'Anulados' },
 };
@@ -116,6 +122,43 @@ export function normalizarEstado(v) {
   return POR_ESQUELETO.get(esqueleto(limpio)) || limpio;
 }
 
+/**
+ * Texto del área tal como está en la hoja -> clave del tablero.
+ * 'Tesorería' -> 'tesoreria'. Un responsable que no es un área del tablero
+ * ('Notaría Quintanilla', 'SUNARP', '—') no cae en ninguna clave, y eso está
+ * bien: ahí no hay botones que ofrecer.
+ */
+export const claveArea = (s) => String(s || '')
+  .normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .trim().toLowerCase();
+
+// Los estados observados, sacados de la propia tabla de estados. Escrito así y
+// no a mano para que un estado observado nuevo entre solo — es la puerta por la
+// que se cuelan los estados que el tablero no conoce.
+export const OBSERVADOS = Object.keys(ESTADO).filter((k) => k.startsWith('OBS. '));
+
+/**
+ * Lo único que se puede corregir con la acción `corregir`.
+ *
+ * La fecha de otorgamiento NO está y no debe entrar: determina el régimen y el
+ * monto, así que pasarla de Ruta B a Ruta A significa que el cliente depositó
+ * S/ 10.60 cuando debía S/ 136.60. El servidor la rechaza con una explicación
+ * larga; el tablero ni la ofrece.
+ *
+ * Las validaciones (correo con arroba, DOI y crédito solo dígitos, campo
+ * vacío) las hace el servidor y sus mensajes se muestran tal cual. Acá no se
+ * duplican: dos criterios que se separan es peor que uno solo.
+ */
+// El tercer valor es solo el teclado que conviene en el móvil. No valida ni
+// rechaza nada: quien juzga el contenido es el servidor, en un solo sitio.
+export const CAMPOS_CORREGIBLES = [
+  ['nombre',  'Nombre del cliente'],
+  ['doi',     'DOI',                'numeric'],
+  ['credito', 'N° de crédito',      'numeric'],
+  ['placa',   'Placa'],
+  ['correo',  'Correo del cliente', 'email'],
+];
+
 // Tarjetas de conteo del tablero, en el orden en que avanza un expediente.
 // Solo la clave y el color: la etiqueta sale siempre de ESTADO[clave].contador,
 // arriba. Nada de texto escrito a mano acá.
@@ -127,17 +170,30 @@ export const TARJETAS = [
   ['EN NOTARÍA',     T.azul],
   ['EN SUNARP',      T.linea2],
   ['OBS. LEGAL',     T.naranja],
+  ['OBS. COBRANZA',  T.naranja],
   ['CERRADO',        T.navy],
   // Última, en gris apagado: un anulado no es trabajo pendiente y no debe
   // pedir atención visual, pero tiene que ser encontrable, no invisible.
   ['ANULADO',        T.linea2],
 ];
 
+// Las tres áreas, con su nombre en pantalla. Un solo sitio: el nombre sale acá
+// para el ingreso por PIN, para el selector de Vista y para el encabezado del
+// listado. Tres copias del mismo nombre es como se separan las etiquetas.
+export const AREAS = [
+  ['cobranza',  'Cobranza'],
+  ['tesoreria', 'Tesorería'],
+  ['legal',     'Legal'],
+];
+
+export const nombreArea = (rol) => (AREAS.find(([clave]) => clave === rol) || [, null])[1];
+
 // Qué estados ve cada área.
 export const ESTADOS_POR_ROL = {
   cobranza:  ['SOLICITADO', 'OBS. TESORERÍA', 'OBS. LEGAL', 'LEVANTADO', 'CERRADO'],
   tesoreria: ['SOLICITADO', 'OBS. TESORERÍA', 'PAGO OK', 'CERRADO'],
-  legal:     ['PAGO OK', 'EN TRÁMITE', 'EN NOTARÍA', 'EN SUNARP', 'OBS. LEGAL', 'LEVANTADO', 'CERRADO', 'ANULADO'],
+  legal:     ['PAGO OK', 'EN TRÁMITE', 'EN NOTARÍA', 'EN SUNARP', 'OBS. LEGAL', 'OBS. COBRANZA',
+              'LEVANTADO', 'CERRADO', 'ANULADO'],
 };
 
 // Motivos de observación. Reemplázalos por los que el equipo ve de verdad.
@@ -148,6 +204,15 @@ export const MOTIVOS = {
     'Depósito no encontrado en el extracto',
     'Fecha del depósito no coincide',
     'Comprobante duplicado',
+    'Otro',
+  ],
+  // Cobranza observa un expediente que ya no está en su escritorio. El caso
+  // frecuente es uno solo: el cliente ya no quiere el trámite. El expediente
+  // pasa a OBS. COBRANZA y le toca a Legal, que lo anula o explica por qué no
+  // procede — no hace falta ningún «pedido de anulación» aparte, porque una
+  // observación ya cambia el estado y el responsable, y el aviso llega solo.
+  cobranza: [
+    'El cliente desiste del trámite',
     'Otro',
   ],
   legal: [
