@@ -1,4 +1,4 @@
-// Comprueba los nueve contadores del tablero contra el conteo directo de los
+// Comprueba los contadores del tablero contra el conteo directo de los
 // expedientes de `listar`. Sin abrir la pantalla: mirar la pantalla es lo que
 // dejó pasar esto, porque ocho de nueve cuadraban y nadie suma nueve números a
 // mano cada vez.
@@ -36,7 +36,7 @@ const ROLES = ['todos', ...Object.keys(ESTADOS_POR_ROL)];
 // alguien renombra una clave de la tabla de etiquetas, esto tiene que gritar.
 const INTERNOS_DE_LA_HOJA = [
   'SOLICITADO', 'OBS. TESORERÍA', 'PAGO OK', 'EN TRÁMITE', 'EN NOTARÍA',
-  'EN SUNARP', 'OBS. LEGAL', 'CERRADO', 'ANULADO',
+  'EN SUNARP', 'OBS. LEGAL', 'OBS. COBRANZA', 'CERRADO', 'ANULADO',
 ];
 
 let fallos = 0;
@@ -165,7 +165,7 @@ expedientes.forEach((e) => {
 
 /* -- 4. los nueve contadores contra el conteo directo de listar ------------ */
 
-console.log(`\n4. Los nueve contadores vs el conteo directo de listar${VIEJO ? '   [CALCULO VIEJO]' : ''}`);
+console.log(`\n4. Los ${CLAVES.length} contadores vs el conteo directo de listar${VIEJO ? '   [CALCULO VIEJO]' : ''}`);
 const n = contar({ expedientes, conteos, listado: true, rol: 'todos', estado: null });
 console.log('  ' + 'tarjeta'.padEnd(20) + 'contador'.padStart(9) + 'listar'.padStart(9));
 let cuadran = 0;
@@ -178,7 +178,7 @@ console.log(`  -> cuadran ${cuadran} de ${CLAVES.length}`);
 
 const suma = CLAVES.reduce((a, c) => a + n[c], 0);
 if (suma + sinTarjeta !== expedientes.length) {
-  mal(`los nueve suman ${suma}, más ${sinTarjeta} sin tarjeta, y listar trajo ${expedientes.length}`);
+  mal(`los ${CLAVES.length} suman ${suma}, más ${sinTarjeta} sin tarjeta, y listar trajo ${expedientes.length}`);
 } else {
   bien(`${suma} en tarjetas + ${sinTarjeta} sin tarjeta (LEVANTADO y desconocidos) = ${expedientes.length} de listar`);
 }
@@ -200,24 +200,33 @@ ROLES.forEach((rol) => {
     }
   });
 });
-if (fallos === antes5) bien('ningún contador se mueve al elegir cualquiera de las nueve tarjetas');
+if (fallos === antes5) bien(`ningún contador se mueve al elegir cualquiera de las ${CLAVES.length} tarjetas`);
 
 /* -- 6. Anulados se cuenta desde cualquier Vista --------------------------- */
 
-console.log('\n6. Anulados se cuenta y se lista desde cualquier Vista');
+console.log('\n6. Los contadores son globales: no cambian con la Vista');
 const antes6 = fallos;
 ROLES.forEach((rol) => {
   const m = contar({ expedientes, conteos, listado: true, rol, estado: null });
-  if (m['ANULADO'] !== real['ANULADO']) {
-    mal(`rol ${rol}: la tarjeta Anulados dice ${m['ANULADO']} y listar tiene ${real['ANULADO']}`);
+  // Los nueve, en cada Vista, contra el conteo directo. Un contador que se
+  // apaga con la Vista contradice a la pantalla: el buscador ignora los
+  // filtros, así que la ficha se ve mientras su contador dice 0.
+  const apagados = CLAVES.filter((c) => m[c] !== real[c]);
+  if (apagados.length) {
+    mal(`Vista ${rol}: ${apagados.map((c) => `${ESTADO[c].contador} dice ${m[c]} y hay ${real[c]}`).join(', ')}`);
   }
-  // Y al hacer clic en la tarjeta, la lista no puede salir vacía.
-  const lista = porRolDe(vivosDe(expedientes, 'ANULADO'), rol);
-  if (lista.length !== real['ANULADO']) {
-    mal(`rol ${rol}: al elegir Anulados la lista trae ${lista.length} y hay ${real['ANULADO']}`);
+  // Y el listado de cada tarjeta tiene que dar el mismo número que la tarjeta:
+  // elegir un estado manda sobre la Vista, justamente para que no quede un
+  // contador en 3 encima de un listado vacío.
+  const descuadran = CLAVES.filter((c) => {
+    const lista = porRolDe(vivosDe(expedientes, c), rol, c).filter((x) => x.estado === c);
+    return lista.length !== real[c];
+  });
+  if (descuadran.length) {
+    mal(`Vista ${rol}: al elegir ${descuadran.map((c) => ESTADO[c].contador).join(', ')} el listado no da el número de la tarjeta`);
   }
 });
-if (fallos === antes6) bien(`comprobado en las ${ROLES.length} Vistas (hay ${real['ANULADO']} anulado(s))`);
+if (fallos === antes6) bien(`los ${CLAVES.length} dan lo mismo en las ${ROLES.length} Vistas, y el listado de cada tarjeta cuadra con ella`);
 
 /* -- 7. las dos fuentes tienen que decir lo mismo -------------------------- */
 
@@ -232,7 +241,7 @@ ROLES.forEach((rol) => {
   if (difieren.length) {
     mal(`rol ${rol}: ${difieren.map((c) => `${ESTADO[c].contador} ${sinDetalle[c]}/${conDetalle[c]}`).join(', ')}`);
   } else {
-    bien(`rol ${rol}: las dos fuentes coinciden en los nueve`);
+    bien(`rol ${rol}: las dos fuentes coinciden en los ${CLAVES.length}`);
   }
 });
 

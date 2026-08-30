@@ -5,7 +5,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "verificar": "node --no-warnings=MODULE_TYPELESS_PACKAGE_JSON scripts/verificar-contadores.mjs"
+    "verificar": "node --no-warnings=MODULE_TYPELESS_PACKAGE_JSON scripts/verificar-contadores.mjs",
+    "verificar-acciones": "node --no-warnings=MODULE_TYPELESS_PACKAGE_JSON scripts/verificar-acciones.mjs"
   },
   "dependencies": {
     "next": "^14.2.5",
