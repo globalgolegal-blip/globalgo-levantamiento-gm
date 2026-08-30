@@ -4,14 +4,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   T, COLOR_ESTADO, FONDO_ESTADO, ESTADO, TARJETAS, ESTADOS_POR_ROL, MOTIVOS, MOTIVOS_ANULAR, MIN_TEXTO,
-  OBSERVADOS, CAMPOS_CORREGIBLES, claveArea, AREAS, nombreArea,
+  CAMPOS_CORREGIBLES, claveArea, AREAS, nombreArea,
 } from './tokens';
 import {
   esAnulado as anulado, esActivo as activo, normalizarExpedientes, normalizarConteos,
   vivosDe, porRolDe, contadores, enLaVista,
 } from './contar';
 import {
-  meToca as leTocaA, puedeCorregir, puedeResponder, puedeReemplazarComprobante,
+  puedeCorregir, puedeResponder, puedeReemplazarComprobante,
   puedeAnular, puedeObservar, destinoObservacion,
 } from './acciones';
 
@@ -487,7 +487,7 @@ function Acciones({ e, sesion, onListo }) {
   return (
     <div>
       {/* El mensaje del servidor, tal cual y completo: los suyos explican qué
-          hacer, y el de la fecha de otorgamiento es largo a propósito. */}
+          hacer, y el de la fecha de firma de la garantía es largo a propósito. */}
       {error && (
         <p style={{
           fontSize: 12.5, color: T.rojo, marginBottom: 8,
@@ -564,11 +564,11 @@ function Acciones({ e, sesion, onListo }) {
             );
           })}
 
-          {/* La fecha de otorgamiento no se corrige por acá y no se ofrece: */}
+          {/* La fecha de firma de la garantía no se corrige por acá y no se ofrece: */}
           <p style={{ fontSize: 12, color: T.texto2, margin: '2px 0 10px', lineHeight: 1.5 }}>
-            La fecha de otorgamiento no se corrige acá. Determina el régimen y el monto,
-            así que cambiarla altera cuánto debía pagar el cliente. Si está mal, anula el
-            expediente y regístralo de nuevo.
+            La fecha de firma de la garantía no se corrige acá. Determina el régimen y
+            el monto, así que cambiarla altera cuánto debía pagar el cliente. Si está mal,
+            anula el expediente y regístralo de nuevo.
           </p>
 
           <p style={{ fontSize: 12, color: cambiados.length ? T.azul : T.texto2, marginBottom: 8 }}>
@@ -794,7 +794,7 @@ function Ficha({ e, indice, sesion, onListo, fotos }) {
               <dt style={{ color: T.texto2 }}>Responsable</dt><dd style={{ margin: 0 }}>{e.responsable}</dd>
               <dt style={{ color: T.texto2 }}>Placa</dt><dd style={{ margin: 0 }}>{e.placa || '—'}</dd>
               <dt style={{ color: T.texto2 }}>N° de crédito</dt><dd style={{ margin: 0 }}>{e.credito}</dd>
-              <dt style={{ color: T.texto2 }}>Fecha de otorgamiento de crédito</dt><dd style={{ margin: 0 }}>{fecha(e.fechaCredito)}</dd>
+              <dt style={{ color: T.texto2 }}>Fecha de firma de la garantía</dt><dd style={{ margin: 0 }}>{fecha(e.fechaCredito)}</dd>
               <dt style={{ color: T.texto2 }}>Régimen</dt>
               <dd style={{ margin: 0 }}>
                 {e.regimen === 'NUEVA' ? 'DL 1400 · SIGM (desde el 02.03.2025)' : 'Ley 28677 (antes del 02.03.2025)'}

@@ -245,5 +245,37 @@ ROLES.forEach((rol) => {
   }
 });
 
+/* -- 8. el LISTADO sí filtra por Vista ------------------------------------ */
+
+// Los contadores dejaron de filtrar por Vista; el listado NO. De eso depende el
+// desistimiento: Cobranza observa, el expediente pasa a OBS. COBRANZA con Legal
+// como responsable, y tiene que aparecerle a Legal en su lista sin que nadie le
+// avise. Si el listado dejara de filtrar, se perdería ese mecanismo —todos
+// verían todo— y nadie sabría qué le toca.
+console.log('\n8. El listado sí filtra por Vista (de eso depende el desistimiento)');
+const antes8 = fallos;
+Object.keys(ESTADOS_POR_ROL).forEach((rol) => {
+  // Sin tarjeta elegida, el listado solo puede traer estados de esa Vista.
+  const suyos = porRolDe(vivosDe(expedientes, null), rol, null);
+  const colados = [...new Set(suyos.map((e) => e.estado))]
+    .filter((s) => !ESTADOS_POR_ROL[rol].includes(s));
+  if (colados.length) mal(`Vista ${rol}: el listado trae ${colados.join(', ')}, que no son de esa Vista`);
+
+  // Y tiene que traer todos los estados que sí le tocan y existen en la hoja.
+  const faltan = ESTADOS_POR_ROL[rol]
+    .filter((s) => s !== 'ANULADO' && real[s] > 0)
+    .filter((s) => !suyos.some((e) => e.estado === s));
+  if (faltan.length) mal(`Vista ${rol}: el listado NO trae ${faltan.join(', ')}, que sí le tocan`);
+});
+
+// El caso concreto, nombrado, para que no se pierda entre los genéricos.
+const enLaListaDeLegal = porRolDe(vivosDe(expedientes, null), 'legal', null)
+  .some((e) => e.estado === 'OBS. COBRANZA');
+if (real['OBS. COBRANZA'] > 0 && !enLaListaDeLegal) {
+  mal('un OBS. COBRANZA no le aparece a Legal: el desistimiento no llega a nadie');
+} else if (fallos === antes8) {
+  bien('cada Vista trae lo suyo y nada más, y un OBS. COBRANZA le aparece a Legal');
+}
+
 console.log(fallos ? `\nFALLA - ${fallos} comprobacion(es) no cuadran\n` : '\nTODO CUADRA\n');
 process.exit(fallos ? 1 : 0);

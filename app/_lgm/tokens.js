@@ -129,7 +129,7 @@ export function normalizarEstado(v) {
  * bien: ahí no hay botones que ofrecer.
  */
 export const claveArea = (s) => String(s || '')
-  .normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   .trim().toLowerCase();
 
 // Los estados observados, sacados de la propia tabla de estados. Escrito así y
@@ -140,17 +140,23 @@ export const OBSERVADOS = Object.keys(ESTADO).filter((k) => k.startsWith('OBS. '
 /**
  * Lo único que se puede corregir con la acción `corregir`.
  *
- * La fecha de otorgamiento NO está y no debe entrar: determina el régimen y el
- * monto, así que pasarla de Ruta B a Ruta A significa que el cliente depositó
- * S/ 10.60 cuando debía S/ 136.60. El servidor la rechaza con una explicación
- * larga; el tablero ni la ofrece.
+ * La fecha de firma de la garantía NO está y no debe entrar: determina el
+ * régimen y el monto, así que pasarla de Ruta B a Ruta A significa que el
+ * cliente depositó S/ 10.60 cuando debía S/ 136.60. El servidor la rechaza con
+ * una explicación larga; el tablero ni la ofrece.
+ *
+ * Ojo con el nombre: la clave que manda la hoja sigue siendo `fechaCredito`,
+ * de cuando el campo se llamaba «fecha del crédito». El campo se renombró el
+ * 27.08 a «Fecha de firma de la GARANTÍA MOBILIARIA» porque no es la fecha del
+ * crédito. La clave interna es del servidor y no se toca desde acá.
  *
  * Las validaciones (correo con arroba, DOI y crédito solo dígitos, campo
  * vacío) las hace el servidor y sus mensajes se muestran tal cual. Acá no se
  * duplican: dos criterios que se separan es peor que uno solo.
+ *
+ * El tercer valor es solo el teclado que conviene en el móvil. No valida ni
+ * rechaza nada: quien juzga el contenido es el servidor, en un solo sitio.
  */
-// El tercer valor es solo el teclado que conviene en el móvil. No valida ni
-// rechaza nada: quien juzga el contenido es el servidor, en un solo sitio.
 export const CAMPOS_CORREGIBLES = [
   ['nombre',  'Nombre del cliente'],
   ['doi',     'DOI',                'numeric'],

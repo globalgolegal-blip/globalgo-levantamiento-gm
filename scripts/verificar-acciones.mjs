@@ -7,7 +7,7 @@
 //
 //   npm run verificar-acciones
 
-import { ESTADO, AREAS, OBSERVADOS } from '../app/_lgm/tokens.js';
+import { ESTADO, AREAS, OBSERVADOS, claveArea } from '../app/_lgm/tokens.js';
 import {
   puedeCorregir, puedeResponder, puedeReemplazarComprobante,
   puedeAnular, puedeObservar, trasElPago,
@@ -158,6 +158,40 @@ if (puedeObservar(expedienteEn('SOLICITADO'), 'legal')) {
   bien('Legal no observa un SOLICITADO — decisión, no efecto colateral');
 }
 
-if (!fallos) bien('las siete reglas se cumplen');
+// 8. claveArea, con los nombres reales de la hoja y sus acentos.
+//
+//    Está acá porque este error ya apareció dos veces: la expresión que quita
+//    los diacríticos se escribió una vez con los caracteres combinantes
+//    LITERALES en el rango, en vez de ̀-ͯ. Funciona igual, pero son
+//    dos caracteres invisibles en un archivo que se copia y se pega, y si se
+//    rompen «Tesorería» deja de reconocerse — y con eso, quien tiene el
+//    expediente en el escritorio deja de ver sus botones. No da error: deja a
+//    alguien sin poder trabajar.
+console.log('\nclaveArea con los nombres de la hoja');
+const antes8 = fallos;
+[
+  ['Cobranza',  'cobranza'],
+  ['Tesorería', 'tesoreria'],
+  ['Legal',     'legal'],
+  // Y los responsables que NO son un área del tablero: no deben caer en
+  // ninguna clave, porque ahí no hay botones que ofrecer.
+  ['Notaría Quintanilla', 'notaria quintanilla'],
+  ['SUNARP', 'sunarp'],
+  ['—', '—'],
+].forEach(([enLaHoja, esperado]) => {
+  const sale = claveArea(enLaHoja);
+  if (sale !== esperado) mal(`claveArea('${enLaHoja}') dio '${sale}' y debía dar '${esperado}'`);
+});
+// Y que las tres claves del tablero sean exactamente las que produce claveArea
+// desde el nombre en pantalla: si se separan, el responsable de la hoja no
+// coincide con el área de la sesión y nadie ve nada.
+AREAS.forEach(([clave, nombre]) => {
+  if (claveArea(nombre) !== clave) {
+    mal(`el nombre '${nombre}' da '${claveArea(nombre)}' y la clave del tablero es '${clave}'`);
+  }
+});
+if (fallos === antes8) bien('los tres nombres con acento caen en su clave, y los no-áreas en ninguna');
+
+if (!fallos) bien('las ocho reglas se cumplen');
 console.log(fallos ? `\nFALLA - ${fallos} problema(s)\n` : '\nTODO CUADRA\n');
 process.exit(fallos ? 1 : 0);
