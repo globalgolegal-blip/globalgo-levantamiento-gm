@@ -4,10 +4,16 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   T, COLOR_ESTADO, FONDO_ESTADO, ESTADO, TARJETAS, ESTADOS_POR_ROL, MOTIVOS, MOTIVOS_ANULAR, MIN_TEXTO,
+  OBSERVADOS, CAMPOS_CORREGIBLES, claveArea, AREAS, nombreArea,
 } from './tokens';
 import {
-  esAnulado as anulado, normalizarExpedientes, normalizarConteos, vivosDe, porRolDe, contadores,
+  esAnulado as anulado, esActivo as activo, normalizarExpedientes, normalizarConteos,
+  vivosDe, porRolDe, contadores, enLaVista,
 } from './contar';
+import {
+  meToca as leTocaA, puedeCorregir, puedeResponder, puedeReemplazarComprobante,
+  puedeAnular, puedeObservar, destinoObservacion,
+} from './acciones';
 
 // Solo quedan los formularios que suben archivos.
 const FORM_COBRANZA    = process.env.NEXT_PUBLIC_LGM_FORM_COBRANZA    || '#';
@@ -67,7 +73,6 @@ const soles = (n) => 'S/ ' + Number(n || 0).toFixed(2);
 // Solo letras y números: "0821WC" y "0821-WC" tienen que encontrar lo mismo.
 const normalizarBusqueda = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
-const activo = (e) => !['CERRADO', 'LEVANTADO', 'ANULADO'].includes(e.estado);
 const congelado = (e) => e.estado === 'EN SUNARP' || (!!e.titulo && !e.fechaInscripcion);
 const vencido = (e) => activo(e) && !congelado(e) && e.sla > 0 && e.diasGo > e.sla;
 const venceHoy = (e) => activo(e) && !congelado(e) && e.sla > 0 && e.diasGo === e.sla;
@@ -286,7 +291,7 @@ function BarraSesion({ sesion, setSesion, usuarios }) {
           ) : !elegido ? (
             <>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 12 }}>
-                {[['cobranza', 'Cobranza'], ['tesoreria', 'Tesorería'], ['legal', 'Legal']].map(([k, txt]) => (
+                {AREAS.map(([k, txt]) => (
                   <Filtro key={k} activa={area === k} onClick={() => setArea(k)}>{txt}</Filtro>
                 ))}
               </div>
@@ -366,13 +371,19 @@ function Acciones({ e, sesion, onListo }) {
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
   const [confirmarReabrir, setConfirmarReabrir] = useState(false);
+  const [campos, setCampos] = useState({});
 
   const area = sesion?.area;
   const esNueva = e.regimen === 'NUEVA';
 
+  // El valor actual de un campo corregible, como texto. Si el listado no lo
+  // trae, queda vacío — nunca "undefined" escrito en un input.
+  const actual = (k) => (e[k] == null ? '' : String(e[k]));
+
   function abrir(cual) {
     setPanel(cual); setError(''); setMotivo(''); setTexto('');
     setValor(''); setDia(hoyISO()); setAvisar(false);
+    setCampos(Object.fromEntries(CAMPOS_CORREGIBLES.map(([k]) => [k, actual(k)])));
   }
 
   async function enviar(accion, extra) {
@@ -395,7 +406,6 @@ function Acciones({ e, sesion, onListo }) {
   const botones = [];
   if (area === 'tesoreria' && e.estado === 'SOLICITADO') {
     botones.push(<Boton key="v" primario disabled={cargando} onClick={() => enviar('validar')}>Validar pago</Boton>);
-    botones.push(<Boton key="o" onClick={() => abrir('observar')}>Observar</Boton>);
   }
   if (area === 'legal') {
     if (e.estado === 'PAGO OK' && esNueva) {
@@ -409,12 +419,6 @@ function Acciones({ e, sesion, onListo }) {
     }
     if ((e.estado === 'EN TRÁMITE' && esNueva) || e.estado === 'EN SUNARP') {
       botones.push(<Boton key="c" primario href={linkCierre(e.id)}>Cargar boleta y cerrar</Boton>);
-    }
-    if (['PAGO OK', 'EN TRÁMITE', 'EN NOTARÍA', 'EN SUNARP'].includes(e.estado)) {
-      botones.push(<Boton key="o" onClick={() => abrir('observar')}>Observar</Boton>);
-    }
-    if (activo(e)) {
-      botones.push(<Boton key="a" peligro onClick={() => abrir('anular')}>Anular</Boton>);
     }
     // Reabrir cambia el estado de un expediente y no se deshace solo — no es
     // un clic suelto, pero tampoco necesita un panel: un paso de confirmación
@@ -436,8 +440,24 @@ function Acciones({ e, sesion, onListo }) {
       }
     }
   }
-  if (area === 'cobranza' && e.estado.startsWith('OBS.')) {
-    botones.push(<Boton key="r" primario onClick={() => abrir('responder')}>Responder la observación</Boton>);
+  // Quién ve qué está en app/_lgm/acciones.js, con el motivo de cada regla, y
+  // scripts/verificar-acciones.mjs imprime la tabla completa.
+  if (puedeAnular(e, area)) {
+    botones.push(<Boton key="a" peligro onClick={() => abrir('anular')}>Anular</Boton>);
+  }
+  if (puedeObservar(e, area)) {
+    botones.push(<Boton key="o" onClick={() => abrir('observar')}>Observar</Boton>);
+  }
+
+  // Primero corregir, después responder: la observación dice qué corregir, y
+  // responder sin haber corregido devuelve el expediente con el dato malo.
+  if (puedeCorregir(e, area)) {
+    botones.push(<Boton key="cg" primario onClick={() => abrir('corregir')}>Corregir datos</Boton>);
+  }
+  if (puedeResponder(e, area)) {
+    botones.push(<Boton key="r" onClick={() => abrir('responder')}>Responder la observación</Boton>);
+  }
+  if (puedeReemplazarComprobante(e, area)) {
     botones.push(<Boton key="cp" href={linkComprobante(e.id)}>Reemplazar comprobante</Boton>);
   }
 
@@ -451,13 +471,29 @@ function Acciones({ e, sesion, onListo }) {
     );
   }
 
+  // Se manda solo lo que la persona cambió. El servidor rechaza un envío sin
+  // diferencias; mejor que no llegue a eso y el botón no se active.
+  const cambiados = CAMPOS_CORREGIBLES
+    .filter(([k]) => (campos[k] ?? '').trim() !== actual(k).trim())
+    .map(([k]) => k);
+
+  // El panel tiene que decir a quién le llega la observación.
+  const destino = destinoObservacion(area);
+
   const faltanTexto = Math.max(0, MIN_TEXTO - texto.trim().length);
   const listoObservar = motivo && faltanTexto === 0;
   const listoAnular = motivo && faltanTexto === 0;
 
   return (
     <div>
-      {error && <p style={{ fontSize: 12, color: T.rojo, marginBottom: 8 }}>{error}</p>}
+      {/* El mensaje del servidor, tal cual y completo: los suyos explican qué
+          hacer, y el de la fecha de otorgamiento es largo a propósito. */}
+      {error && (
+        <p style={{
+          fontSize: 12.5, color: T.rojo, marginBottom: 8,
+          lineHeight: 1.5, whiteSpace: 'pre-line',
+        }}>{error}</p>
+      )}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{botones}</div>
 
       {panel === 'observar' && (
@@ -468,14 +504,14 @@ function Acciones({ e, sesion, onListo }) {
           <h6 style={{
             margin: '0 0 8px', fontSize: 12, fontWeight: 600, color: T.naranjaTx,
             textTransform: 'uppercase', letterSpacing: '.06em',
-          }}>Observar — indica qué debe corregir Cobranza</h6>
+          }}>Observar — indica qué debe resolver {destino}</h6>
           <select value={motivo} onChange={(ev) => setMotivo(ev.target.value)} style={{ ...estiloEntrada, marginBottom: 8 }}>
             <option value="">Elige el motivo…</option>
             {(MOTIVOS[area] || []).map((m) => <option key={m}>{m}</option>)}
           </select>
           <textarea
             value={texto} onChange={(ev) => setTexto(ev.target.value)}
-            placeholder="Escribe qué tiene que corregir Cobranza. Sin este texto no se puede observar."
+            placeholder={`Escribe qué tiene que resolver ${destino}. Sin este texto no se puede observar.`}
             style={{ ...estiloEntrada, minHeight: 70, resize: 'vertical', marginBottom: 8 }}
           />
           <p style={{ fontSize: 12, color: T.naranjaTx, marginBottom: 8 }}>
@@ -493,6 +529,67 @@ function Acciones({ e, sesion, onListo }) {
         </div>
       )}
 
+      {panel === 'corregir' && (
+        <div style={{
+          marginTop: 11, background: T.blanco, border: `0.5px solid ${T.linea2}`,
+          borderRadius: T.rInput, padding: 12,
+        }}>
+          <h6 style={{
+            margin: '0 0 4px', fontSize: 12, fontWeight: 600, color: T.navy,
+            textTransform: 'uppercase', letterSpacing: '.06em',
+          }}>Corregir datos del expediente</h6>
+          <p style={{ fontSize: 12.5, color: T.texto2, margin: '0 0 10px', lineHeight: 1.5 }}>
+            Se manda solo lo que cambies. El expediente no cambia de estado ni de
+            responsable: después de corregir, responde la observación para que
+            quien observó vea el arreglo.
+          </p>
+
+          {CAMPOS_CORREGIBLES.map(([clave, etiqueta, teclado]) => {
+            const cambio = cambiados.includes(clave);
+            return (
+              <Campo key={clave} etiqueta={cambio ? `${etiqueta} · se va a corregir` : etiqueta}>
+                <input
+                  value={campos[clave] ?? ''}
+                  onChange={(ev) => setCampos({ ...campos, [clave]: ev.target.value })}
+                  inputMode={teclado || 'text'}
+                  autoCapitalize={teclado === 'email' ? 'off' : undefined}
+                  spellCheck={false}
+                  style={{
+                    ...estiloEntrada,
+                    borderColor: cambio ? T.azul : T.linea2,
+                    background: cambio ? T.azulBg : T.blanco,
+                  }}
+                />
+              </Campo>
+            );
+          })}
+
+          {/* La fecha de otorgamiento no se corrige por acá y no se ofrece: */}
+          <p style={{ fontSize: 12, color: T.texto2, margin: '2px 0 10px', lineHeight: 1.5 }}>
+            La fecha de otorgamiento no se corrige acá. Determina el régimen y el monto,
+            así que cambiarla altera cuánto debía pagar el cliente. Si está mal, anula el
+            expediente y regístralo de nuevo.
+          </p>
+
+          <p style={{ fontSize: 12, color: cambiados.length ? T.azul : T.texto2, marginBottom: 8 }}>
+            {cambiados.length === 0
+              ? 'Cambia algún dato para poder guardar.'
+              : cambiados.length === 1
+                ? 'Se va a corregir 1 dato.'
+                : `Se van a corregir ${cambiados.length} datos.`}
+          </p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Boton primario disabled={!cambiados.length || cargando}
+                   onClick={() => enviar('corregir', {
+                     campos: Object.fromEntries(cambiados.map((k) => [k, (campos[k] ?? '').trim()])),
+                   })}>
+              {cargando ? 'Guardando…' : 'Guardar corrección'}
+            </Boton>
+            <Boton onClick={() => setPanel(null)}>Cancelar</Boton>
+          </div>
+        </div>
+      )}
+
       {panel === 'responder' && (
         <div style={{
           marginTop: 11, background: T.azulBg, border: `0.5px solid ${T.azul}`,
@@ -501,10 +598,10 @@ function Acciones({ e, sesion, onListo }) {
           <h6 style={{
             margin: '0 0 8px', fontSize: 12, fontWeight: 600, color: T.azul,
             textTransform: 'uppercase', letterSpacing: '.06em',
-          }}>Responder — cuenta qué corregiste</h6>
+          }}>Responder</h6>
           <textarea
             value={texto} onChange={(ev) => setTexto(ev.target.value)}
-            placeholder="Explica qué corregiste. Si cambiaste el comprobante, dilo acá también."
+            placeholder="Escribe tu respuesta. Si corregiste datos o cambiaste el comprobante, dilo acá también."
             style={{ ...estiloEntrada, minHeight: 70, resize: 'vertical', marginBottom: 8 }}
           />
           <p style={{ fontSize: 12, color: T.azul, marginBottom: 8 }}>
@@ -513,7 +610,7 @@ function Acciones({ e, sesion, onListo }) {
           <div style={{ display: 'flex', gap: 8 }}>
             <Boton primario disabled={faltanTexto > 0 || cargando}
                    onClick={() => enviar('responder', { texto })}>
-              {cargando ? 'Guardando…' : 'Enviar corrección'}
+              {cargando ? 'Guardando…' : 'Enviar respuesta'}
             </Boton>
             <Boton onClick={() => setPanel(null)}>Cancelar</Boton>
           </div>
@@ -645,12 +742,21 @@ function Ficha({ e, indice, sesion, onListo, fotos }) {
                   </span>
                 </>
               ) : (
-                // Sin placa, el número de expediente es el único identificador
-                // que hay: lleva el mismo peso visual que la placa, no el de
-                // dato secundario — si no, la tarjeta se ve apagada.
-                <b style={{
-                  fontFamily: 'ui-monospace, monospace', fontSize: 14.5, color: T.texto, whiteSpace: 'nowrap',
-                }}>
+                // Sin placa, el número de expediente es el único identificador que
+                // hay, y toma el papel de titular. Mismo tamaño, mismo color y
+                // MISMA FAMILIA que la placa: en la ronda 3 igualé número y
+                // color pero dejé la monospace, y con eso seguía viéndose
+                // apagado. Medido en el navegador: a 14.5 px y bold, la sans
+                // del sistema ocupa 20 px de alto y la monospace 17 — un 15 %
+                // menos con el mismo número escrito.
+                //
+                // La salida no es compensar con un tamaño mayor: cuánto hay que
+                // compensar depende de qué monospace tenga la máquina, así que
+                // ese número se desajusta solo. Usar la misma familia lo iguala
+                // por construcción, en cualquier plataforma. La monospace se
+                // queda donde sí corresponde: el ID pequeño al lado de la placa,
+                // donde es dato secundario y las cifras alinean entre fichas.
+                <b style={{ fontSize: 14.5, color: T.texto, whiteSpace: 'nowrap' }}>
                   {e.id}
                 </b>
               )}
@@ -688,7 +794,7 @@ function Ficha({ e, indice, sesion, onListo, fotos }) {
               <dt style={{ color: T.texto2 }}>Responsable</dt><dd style={{ margin: 0 }}>{e.responsable}</dd>
               <dt style={{ color: T.texto2 }}>Placa</dt><dd style={{ margin: 0 }}>{e.placa || '—'}</dd>
               <dt style={{ color: T.texto2 }}>N° de crédito</dt><dd style={{ margin: 0 }}>{e.credito}</dd>
-              <dt style={{ color: T.texto2 }}>Fecha del crédito</dt><dd style={{ margin: 0 }}>{fecha(e.fechaCredito)}</dd>
+              <dt style={{ color: T.texto2 }}>Fecha de otorgamiento de crédito</dt><dd style={{ margin: 0 }}>{fecha(e.fechaCredito)}</dd>
               <dt style={{ color: T.texto2 }}>Régimen</dt>
               <dd style={{ margin: 0 }}>
                 {e.regimen === 'NUEVA' ? 'DL 1400 · SIGM (desde el 02.03.2025)' : 'Ley 28677 (antes del 02.03.2025)'}
@@ -743,7 +849,9 @@ function Ficha({ e, indice, sesion, onListo, fotos }) {
                     <div style={{ fontSize: 11, color: T.texto2, marginBottom: 4, display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' }}>
                       <Avatar usuario={c.usuario} foto={fotos[c.usuario]} tam={20} />
                       <b style={{ color: T.texto, fontWeight: 600 }}>{c.usuario}</b>
-                      <span>{c.area}</span>
+                      {/* Con el usuario LEGAL esto decía «LEGAL  Legal». El área
+                          solo agrega información cuando no es el nombre. */}
+                      {claveArea(c.area) !== claveArea(c.usuario) && <span>{c.area}</span>}
                       <span>{fechaHora(c.fecha)}</span>
                     </div>
                     {c.motivo && <div style={{ fontWeight: 600, marginBottom: 2 }}>{c.motivo}</div>}
@@ -889,16 +997,18 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
   // mantener sincronizado.
   const vivos = useMemo(() => vivosDe(expedientes, estado), [expedientes, estado]);
 
-  const porRol = useMemo(() => porRolDe(vivos, rol), [vivos, rol]);
+  const porRol = useMemo(() => porRolDe(vivos, rol, estado), [vivos, rol, estado]);
 
-  // Los nueve números de las tarjetas. No reciben `estado`: un contador
-  // cuenta lo que hay en la hoja, no lo que queda después de filtrar la
-  // pantalla — contar sobre `vivos` es lo que hacía que elegir Anulados
-  // pusiera los otros ocho en 0. scripts/verificar-contadores.mjs comprueba
-  // estos mismos números contra el conteo directo de `listar`.
+  // Los nueve números de las tarjetas. GLOBALES: no reciben la Vista ni la
+  // tarjeta elegida. Un contador dice cuántos hay en ese estado en toda la
+  // hoja; filtrar es cosa del listado de abajo. Cuando el contador también
+  // filtraba, la pantalla se contradecía: «En notaría: 0» con la ficha de ese
+  // expediente visible debajo, porque el buscador ignora los filtros y el
+  // contador no. scripts/verificar-contadores.mjs comprueba estos mismos
+  // números contra el conteo directo de `listar`.
   const numeros = useMemo(
-    () => contadores({ expedientes, conteos: conteosNorm, listado: listadoRecibido, rol }),
-    [expedientes, conteosNorm, listadoRecibido, rol]
+    () => contadores({ expedientes, conteos: conteosNorm, listado: listadoRecibido }),
+    [expedientes, conteosNorm, listadoRecibido]
   );
 
   const lista = useMemo(() => {
@@ -940,6 +1050,11 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
   }, [usuarios]);
 
   const alertados = porRol.filter((e) => e.alerta);
+
+  // Hay un estado elegido que la Vista actual no incluye: el listado lo muestra
+  // igual, y el encabezado lo dice. Con el buscador activo no aplica — ahí no
+  // se aplica ningún filtro y el encabezado ya lo anuncia de otra forma.
+  const fueraDeVista = !buscando && !!estado && !enLaVista(estado, rol);
 
   return (
     <div style={{ minHeight: '100vh', background: T.crema, color: T.texto, fontSize: 14 }}>
@@ -995,7 +1110,7 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
             display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8,
             opacity: buscando ? 0.6 : 1, transition: '.15s',
           }}>
-            {[['todos', 'Vista completa'], ['cobranza', 'Cobranza'], ['tesoreria', 'Tesorería'], ['legal', 'Legal']]
+            {[['todos', 'Vista completa'], ...AREAS]
               .map(([k, txt]) => (
                 <Filtro key={k} activa={rol === k} onClick={() => { setRol(k); setEstado(null); }}>{txt}</Filtro>
               ))}
@@ -1072,8 +1187,14 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
           )
         )}
 
+        {/* Diez tarjetas en una columna de 480 px. auto-FILL, no auto-fit:
+            auto-fit colapsa las pistas vacías y la última fila se estiraría,
+            dejando dos tarjetas del doble de ancho que las otras ocho. Con
+            auto-fill las diez miden igual y la última fila queda a medias, que
+            es lo que se espera de una cuadrícula a la que se le acabaron los
+            elementos. Sale 4 + 4 + 2. */}
         <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))',
           gap: 10, marginBottom: 18,
         }}>
           {TARJETAS.map(([clave, color]) => {
@@ -1163,11 +1284,22 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
           display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
           margin: '2px 2px 9px', gap: 12, flexWrap: 'wrap',
         }}>
+          {/* El encabezado tiene que describir lo que se está mostrando, no el
+              filtro que quedó marcado. Con texto en el buscador los filtros no
+              se aplican, así que anunciar «Obs. Tesorería» encima de fichas que
+              ya no lo son es mentir — pasó en la prueba. */}
           <h2 style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>
-            {estado ? (ESTADO[estado]?.contador || 'Expedientes') : 'Expedientes'}
+            {buscando ? 'Resultados de la búsqueda'
+              : estado ? (ESTADO[estado]?.contador || 'Expedientes')
+              : 'Expedientes'}
           </h2>
           <span style={{ fontSize: 12, color: T.texto2 }}>
             {lista.length} {lista.length === 1 ? 'expediente' : 'expedientes'}
+            {/* La Vista elegida se conserva, pero el estado elegido manda sobre
+                ella. Sin esta línea sería un override silencioso: la Vista
+                marcada en Cobranza y el listado lleno de expedientes que no
+                son de Cobranza, sin explicación. */}
+            {fueraDeVista && ` · mostrando fuera de la Vista ${nombreArea(rol)}`}
           </span>
         </div>
 
