@@ -1,6 +1,14 @@
 import { NextResponse } from 'next/server';
+import { esRespuestaUsable, AVISO_NEUTRO } from '../../_lgm/respuesta';
 
 const espera = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Se lanza cuando el servidor contestó pero no se entiende qué contestó. NO es
+// lo mismo que no haber llegado: si Apps Script respondió 200 con el cuerpo
+// vacío, es probable que la acción SÍ se haya ejecutado. Por eso tampoco se
+// reintenta — repetir una mutación cuyo resultado no conocemos es cómo se
+// terminan grabando dos observaciones y una vuelta de más en el expediente.
+class RespuestaIndescifrable extends Error {}
 
 // El Apps Script a veces tarda en despertar y responde 404/5xx mientras arranca.
 // Reintenta con espera creciente antes de darlo por caído de verdad.
@@ -20,15 +28,30 @@ async function llamarConReintentos(url, cuerpo) {
       if (r.status >= 500 || r.status === 404) {
         ultimoError = new Error('respondió ' + r.status);
       } else {
-        return await r.json();
+        try {
+          return await r.json();
+        } catch {
+          // Contestó, y con un estado que no invita a reintentar, pero el cuerpo
+          // no es JSON. Se corta acá en vez de repetir la llamada.
+          throw new RespuestaIndescifrable('cuerpo no interpretable con estado ' + r.status);
+        }
       }
     } catch (e) {
+      if (e instanceof RespuestaIndescifrable) throw e;
       ultimoError = e;
     }
     if (intento < backoffs.length) await espera(backoffs[intento]);
   }
   throw ultimoError;
 }
+
+// Lo que el cliente recibe cuando no se puede afirmar que la acción falló.
+// `motivo: 'indeterminado'` es la señal: el cliente no debe decir que falló,
+// tiene que decir que no se sabe y recargar el listado.
+const indeterminado = () => NextResponse.json(
+  { ok: false, motivo: 'indeterminado', error: AVISO_NEUTRO },
+  { status: 502 }
+);
 
 /**
  * Puente entre el tablero y la hoja.
@@ -69,8 +92,16 @@ export async function POST(req) {
     // para la carga por área y las alertas. Si algún día page.jsx deja de ser
     // force-dynamic, acá hay que volver a invalidar.
 
+    // Una respuesta sin `ok` no es una respuesta. Apps Script devolvió {} —pasó
+    // de verdad, con una corrección que SÍ se guardó en la hoja— y el cliente
+    // leía la falta de `ok` como un rechazo y decía «No se pudo guardar». Con
+    // corregir da igual; con observar, la persona lo repite y quedan dos
+    // observaciones. Acá se marca como indeterminado y el cliente lo dice así.
+    if (!esRespuestaUsable(data)) return indeterminado();
+
     return NextResponse.json(data);
   } catch (e) {
+    if (e instanceof RespuestaIndescifrable) return indeterminado();
     // Este mensaje es del transporte, nunca del PIN, del token o de los datos:
     // el servidor de Apps Script no respondió tras varios intentos. "motivo:
     // conexion" deja que el cliente lo distinga de un rechazo real de la hoja
