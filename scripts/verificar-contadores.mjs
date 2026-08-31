@@ -20,9 +20,9 @@
 //
 // Sale con código 1 si algo no cuadra, para poder colgarlo de un build.
 
-import { TARJETAS, ESTADO, ESTADOS_POR_ROL, COLOR_ESTADO, normalizarEstado } from '../app/_lgm/tokens.js';
+import { TARJETAS, ESTADO, AREAS, COLOR_ESTADO, normalizarEstado, claveArea } from '../app/_lgm/tokens.js';
 import {
-  contadores, normalizarExpedientes, normalizarConteos, esAnulado, vivosDe, porRolDe,
+  contadores, normalizarExpedientes, normalizarConteos, esAnulado, vivosDe, agrupar,
 } from '../app/_lgm/contar.js';
 
 const args = process.argv.slice(2);
@@ -30,7 +30,9 @@ const opcion = (n) => { const i = args.indexOf(n); return i === -1 ? null : (arg
 const VIEJO = args.includes('--calculo-viejo');
 
 const CLAVES = TARJETAS.map(([c]) => c);
-const ROLES = ['todos', ...Object.keys(ESTADOS_POR_ROL)];
+// El selector de Vista se quitó, pero los contadores tienen que seguir dando lo
+// mismo pasen lo que les pasen: si alguien vuelve a meterles un área, esto falla.
+const ROLES = ['todos', ...AREAS.map(([clave]) => clave)];
 
 // Los nueve valores internos de la hoja, escritos aparte a propósito: si
 // alguien renombra una clave de la tabla de etiquetas, esto tiene que gritar.
@@ -52,13 +54,23 @@ const visible = (s) => JSON.stringify(String(s)).replace(
 // La derivación ANTERIOR, tal como estaba: los contadores salían de `vivos`
 // —que cambia con la tarjeta elegida— y ANULADO pasaba por el filtro de área.
 // Está acá solo para comprobar, con --calculo-viejo, que estas pruebas muerden.
+// La tabla que alimentaba el filtro por área, sólo para poder reproducir el
+// error de entonces. En la aplicación ya no existe — ver el comentario que dejó
+// su hueco en tokens.js.
+const POR_ROL_DE_ENTONCES = {
+  cobranza:  ['SOLICITADO', 'OBS. TESORERÍA', 'OBS. LEGAL', 'LEVANTADO', 'CERRADO'],
+  tesoreria: ['SOLICITADO', 'OBS. TESORERÍA', 'PAGO OK', 'CERRADO'],
+  legal:     ['PAGO OK', 'EN TRÁMITE', 'EN NOTARÍA', 'EN SUNARP', 'OBS. LEGAL', 'OBS. COBRANZA',
+              'LEVANTADO', 'CERRADO', 'ANULADO'],
+};
+
 function contadoresViejos({ expedientes = [], conteos = {}, listado = false, rol = 'todos', estado = null }) {
   const porRol = rol === 'todos'
     ? vivosDe(expedientes, estado)
-    : vivosDe(expedientes, estado).filter((e) => (ESTADOS_POR_ROL[rol] || []).includes(e.estado));
+    : vivosDe(expedientes, estado).filter((e) => (POR_ROL_DE_ENTONCES[rol] || []).includes(e.estado));
   const out = {};
   CLAVES.forEach((clave) => {
-    const enVista = rol === 'todos' || (ESTADOS_POR_ROL[rol] || []).includes(clave);
+    const enVista = rol === 'todos' || (POR_ROL_DE_ENTONCES[rol] || []).includes(clave);
     out[clave] = clave === 'ANULADO'
       ? (enVista ? (listado ? expedientes.filter(esAnulado).length : (conteos[clave] || 0)) : 0)
       : listado
@@ -202,31 +214,34 @@ ROLES.forEach((rol) => {
 });
 if (fallos === antes5) bien(`ningún contador se mueve al elegir cualquiera de las ${CLAVES.length} tarjetas`);
 
-/* -- 6. Anulados se cuenta desde cualquier Vista --------------------------- */
+/* -- 6. los contadores no dependen de nada -------------------------------- */
 
-console.log('\n6. Los contadores son globales: no cambian con la Vista');
+console.log('\n6. Los contadores son globales y no dependen de ninguna área');
 const antes6 = fallos;
 ROLES.forEach((rol) => {
+  // `contadores` ya no acepta un área, y esto lo mantiene así: se le pasa una
+  // igual, y tiene que dar exactamente lo mismo que el conteo directo. Si
+  // alguien vuelve a hacer que los contadores dependan del área, esto falla.
   const m = contar({ expedientes, conteos, listado: true, rol, estado: null });
-  // Los nueve, en cada Vista, contra el conteo directo. Un contador que se
-  // apaga con la Vista contradice a la pantalla: el buscador ignora los
-  // filtros, así que la ficha se ve mientras su contador dice 0.
   const apagados = CLAVES.filter((c) => m[c] !== real[c]);
   if (apagados.length) {
-    mal(`Vista ${rol}: ${apagados.map((c) => `${ESTADO[c].contador} dice ${m[c]} y hay ${real[c]}`).join(', ')}`);
-  }
-  // Y el listado de cada tarjeta tiene que dar el mismo número que la tarjeta:
-  // elegir un estado manda sobre la Vista, justamente para que no quede un
-  // contador en 3 encima de un listado vacío.
-  const descuadran = CLAVES.filter((c) => {
-    const lista = porRolDe(vivosDe(expedientes, c), rol, c).filter((x) => x.estado === c);
-    return lista.length !== real[c];
-  });
-  if (descuadran.length) {
-    mal(`Vista ${rol}: al elegir ${descuadran.map((c) => ESTADO[c].contador).join(', ')} el listado no da el número de la tarjeta`);
+    mal(`con área ${rol}: ${apagados.map((c) => `${ESTADO[c].contador} dice ${m[c]} y hay ${real[c]}`).join(', ')}`);
   }
 });
-if (fallos === antes6) bien(`los ${CLAVES.length} dan lo mismo en las ${ROLES.length} Vistas, y el listado de cada tarjeta cuadra con ella`);
+
+// Y el listado de cada tarjeta tiene que dar el número de esa tarjeta. Ya no hay
+// filtro de área que lo pueda vaciar: elegir una tarjeta filtra por estado, y
+// nada más.
+const descuadran = CLAVES.filter((c) => {
+  const lista = vivosDe(expedientes, c).filter((x) => x.estado === c);
+  return lista.length !== real[c];
+});
+if (descuadran.length) {
+  mal(`al elegir ${descuadran.map((c) => ESTADO[c].contador).join(', ')} el listado no da el número de la tarjeta`);
+}
+if (fallos === antes6) {
+  bien(`los ${CLAVES.length} dan lo mismo con cualquier área, y el listado de cada tarjeta cuadra con ella`);
+}
 
 /* -- 7. las dos fuentes tienen que decir lo mismo -------------------------- */
 
@@ -245,36 +260,67 @@ ROLES.forEach((rol) => {
   }
 });
 
-/* -- 8. el LISTADO sí filtra por Vista ------------------------------------ */
+/* -- 8. el listado NO esconde nada ---------------------------------------- */
 
-// Los contadores dejaron de filtrar por Vista; el listado NO. De eso depende el
-// desistimiento: Cobranza observa, el expediente pasa a OBS. COBRANZA con Legal
-// como responsable, y tiene que aparecerle a Legal en su lista sin que nadie le
-// avise. Si el listado dejara de filtrar, se perdería ese mecanismo —todos
-// verían todo— y nadie sabría qué le toca.
-console.log('\n8. El listado sí filtra por Vista (de eso depende el desistimiento)');
+// Este control está al revés de como estaba, y a propósito.
+//
+// Antes comprobaba que el listado filtrara por Vista. Ese filtro se quitó: era
+// el que escondía LGM-2026-0007 —PAGO OK, responsable Legal— de Cobranza, que es
+// justamente quien tiene que observarlo cuando el cliente desiste. Un filtro
+// automático por área vuelve el desistimiento imposible de pedir.
+//
+// Ahora hay UNA lista con todo, en tres grupos que son orden y no filtro. Lo que
+// hay que comprobar es lo contrario: que la suma de los tres grupos sea la lista
+// completa, con cualquier área de sesión, y que nadie caiga fuera.
+console.log('\n8. El listado no esconde nada: los tres grupos suman la lista completa');
 const antes8 = fallos;
-Object.keys(ESTADOS_POR_ROL).forEach((rol) => {
-  // Sin tarjeta elegida, el listado solo puede traer estados de esa Vista.
-  const suyos = porRolDe(vivosDe(expedientes, null), rol, null);
-  const colados = [...new Set(suyos.map((e) => e.estado))]
-    .filter((s) => !ESTADOS_POR_ROL[rol].includes(s));
-  if (colados.length) mal(`Vista ${rol}: el listado trae ${colados.join(', ')}, que no son de esa Vista`);
 
-  // Y tiene que traer todos los estados que sí le tocan y existen en la hoja.
-  const faltan = ESTADOS_POR_ROL[rol]
-    .filter((s) => s !== 'ANULADO' && real[s] > 0)
-    .filter((s) => !suyos.some((e) => e.estado === s));
-  if (faltan.length) mal(`Vista ${rol}: el listado NO trae ${faltan.join(', ')}, que sí le tocan`);
+// Un expediente por cada responsable que la hoja puede devolver, incluidos los
+// que no son áreas del tablero y el vacío que devuelve la fórmula cuando su
+// rango de búsqueda se queda corto.
+const RESPONSABLES = ['Cobranza', 'Tesorería', 'Legal', 'Notaría Quintanilla', 'SUNARP', '—', '', '   '];
+const muestra = RESPONSABLES.map((responsable, i) => ({
+  id: 'LGM-2026-9' + String(i).padStart(3, '0'),
+  estado: 'PAGO OK',
+  responsable,
+}));
+
+[null, 'cobranza', 'tesoreria', 'legal'].forEach((area) => {
+  const { anomalias, teToca, resto } = agrupar(muestra, area);
+  const total = anomalias.length + teToca.length + resto.length;
+  if (total !== muestra.length) {
+    mal(`área ${area}: los tres grupos suman ${total} y la lista tiene ${muestra.length}`);
+  }
+  // Y ninguno puede estar en dos grupos a la vez.
+  const ids = [...anomalias, ...teToca, ...resto].map((e) => e.id);
+  if (new Set(ids).size !== ids.length) mal(`área ${area}: hay un expediente en dos grupos`);
+
+  // El responsable vacío es una anomalía y se ve; nunca se pierde.
+  const vacios = muestra.filter((e) => !claveArea(e.responsable));
+  vacios.forEach((e) => {
+    if (!anomalias.some((x) => x.id === e.id)) {
+      mal(`área ${area}: el expediente sin responsable ${e.id} no está en anomalías`);
+    }
+  });
+
+  // «Notaría Quintanilla» y «SUNARP» no son áreas del tablero: van al resto.
+  ['notaria quintanilla', 'sunarp', '—'].forEach((r) => {
+    const e = muestra.find((x) => claveArea(x.responsable) === r);
+    if (e && !resto.some((x) => x.id === e.id)) {
+      mal(`área ${area}: ${e.responsable} no cayó en el resto`);
+    }
+  });
 });
 
-// El caso concreto, nombrado, para que no se pierda entre los genéricos.
-const enLaListaDeLegal = porRolDe(vivosDe(expedientes, null), 'legal', null)
-  .some((e) => e.estado === 'OBS. COBRANZA');
-if (real['OBS. COBRANZA'] > 0 && !enLaListaDeLegal) {
-  mal('un OBS. COBRANZA no le aparece a Legal: el desistimiento no llega a nadie');
-} else if (fallos === antes8) {
-  bien('cada Vista trae lo suyo y nada más, y un OBS. COBRANZA le aparece a Legal');
+// Y el caso del desistimiento, nombrado: un OBS. COBRANZA le tiene que aparecer
+// a Cobranza, que no es su responsable, para poder seguirlo.
+const conObsCobranza = [{ id: 'X', estado: 'OBS. COBRANZA', responsable: 'Legal' }];
+const paraCobranza = agrupar(conObsCobranza, 'cobranza');
+if (paraCobranza.anomalias.length + paraCobranza.teToca.length + paraCobranza.resto.length !== 1) {
+  mal('un OBS. COBRANZA desaparece de la lista de Cobranza');
+}
+if (fallos === antes8) {
+  bien(`los tres grupos suman la lista con las ${4} sesiones probadas, y nadie se pierde`);
 }
 
 console.log(fallos ? `\nFALLA - ${fallos} comprobacion(es) no cuadran\n` : '\nTODO CUADRA\n');

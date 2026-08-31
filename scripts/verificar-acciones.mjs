@@ -7,7 +7,7 @@
 //
 //   npm run verificar-acciones
 
-import { ESTADO, AREAS, OBSERVADOS, claveArea } from '../app/_lgm/tokens.js';
+import { ESTADO, AREAS, OBSERVADOS, claveArea, esElMismoNombre } from '../app/_lgm/tokens.js';
 import {
   puedeCorregir, puedeResponder, puedeReemplazarComprobante,
   puedeAnular, puedeObservar, trasElPago,
@@ -192,6 +192,33 @@ AREAS.forEach(([clave, nombre]) => {
 });
 if (fallos === antes8) bien('los tres nombres con acento caen en su clave, y los no-áreas en ninguna');
 
-if (!fallos) bien('las ocho reglas se cumplen');
+// 9. La cabecera de una observación no repite el nombre y el área.
+//
+//    Pasó dos veces: «LEGAL  Legal» primero, y después «COBRANZAS Cobranza»,
+//    porque la comparación exacta no veía la ese del plural. Y la otra mitad
+//    importa igual: un nombre de persona NO puede confundirse con un área, o el
+//    área desaparecería de la cabecera y no se sabría quién observó desde dónde.
+console.log('\nLa cabecera de una observación: nombre vs área');
+const antes9 = fallos;
+[
+  // [usuario, área, ¿es la misma palabra?]
+  ['LEGAL',     'Legal',     true],
+  ['COBRANZAS', 'Cobranza',  true],
+  ['COBRANZA',  'Cobranza',  true],
+  ['TESORERIA', 'Tesorería', true],
+  ['TESORERÍA', 'Tesorería', true],
+  ['ALONSO',    'Legal',     false],
+  ['DIANA',     'Cobranza',  false],
+  ['LUCIA',     'Tesorería', false],
+  ['',          'Legal',     false],
+].forEach(([usuario, area, esperado]) => {
+  const sale = esElMismoNombre(area, usuario);
+  if (sale !== esperado) {
+    mal(`«${usuario}» y «${area}»: dio ${sale} y se esperaba ${esperado}`);
+  }
+});
+if (fallos === antes9) bien('el plural no engaña, y ningún nombre de persona se confunde con un área');
+
+if (!fallos) bien('las nueve reglas se cumplen');
 console.log(fallos ? `\nFALLA - ${fallos} problema(s)\n` : '\nTODO CUADRA\n');
 process.exit(fallos ? 1 : 0);
