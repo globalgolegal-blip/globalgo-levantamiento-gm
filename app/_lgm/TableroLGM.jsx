@@ -3,17 +3,21 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  T, COLOR_ESTADO, FONDO_ESTADO, ESTADO, TARJETAS, ESTADOS_POR_ROL, MOTIVOS, MOTIVOS_ANULAR, MIN_TEXTO,
-  CAMPOS_CORREGIBLES, claveArea, AREAS, nombreArea,
+  T, COLOR_ESTADO, FONDO_ESTADO, ESTADO, TARJETAS, MOTIVOS, MOTIVOS_ANULAR, MIN_TEXTO,
+  CAMPOS_CORREGIBLES, claveArea, nombreArea, esElMismoNombre,
 } from './tokens';
 import {
   esAnulado as anulado, esActivo as activo, normalizarExpedientes, normalizarConteos,
-  vivosDe, porRolDe, contadores, enLaVista,
+  vivosDe, contadores, agrupar,
 } from './contar';
 import {
   puedeCorregir, puedeResponder, puedeReemplazarComprobante,
   puedeAnular, puedeObservar, destinoObservacion,
 } from './acciones';
+import {
+  sinRespuestaClara, AVISO_ESCRITURA, AVISO_LECTURA, AVISO_INGRESO,
+} from './respuesta';
+import Pie from './Pie';
 
 // Solo quedan los formularios que suben archivos.
 const FORM_COBRANZA    = process.env.NEXT_PUBLIC_LGM_FORM_COBRANZA    || '#';
@@ -96,7 +100,13 @@ function resumenCorto(e) {
   if (anulado(e)) return `Anulado el ${fecha(e.fechaCierre)}`;
   if (e.estado === 'CERRADO' || e.estado === 'LEVANTADO') return `Finalizado el ${fecha(e.fechaCierre)}`;
 
-  const responsable = `le toca a ${e.responsable}`;
+  // `responsable` es una fórmula de la hoja y puede venir vacía: cuando su rango
+  // de búsqueda se queda corto no da error, devuelve cadena vacía. Sin esto el
+  // resumen quedaba en «le toca a » y se cortaba en seco. En pantalla se dice en
+  // los términos de quien lo lee, no en los de la hoja.
+  const responsable = e.responsable
+    ? `le toca a ${e.responsable}`
+    : 'sin área asignada · detenido';
   switch (e.estado) {
     case 'SOLICITADO':     return `Solicitado el ${fecha(e.fechaSolicitud)} · ${responsable}${vuelta}`;
     case 'OBS. TESORERÍA': return `Observado por Tesorería · ${responsable}${vuelta}`;
@@ -139,9 +149,12 @@ async function llamar(cuerpo) {
     });
     return await r.json();
   } catch (e) {
-    return { ok: false, error: 'Sin conexión con el servidor' };
+    // Con `motivo` para que quien llama pueda distinguirlo de un rechazo del
+    // servidor: una petición que se cayó en el camino pudo haber llegado.
+    return { ok: false, motivo: 'conexion', error: 'Sin conexión con el servidor' };
   }
 }
+
 
 /* ─────────────────────────────── piezas */
 
@@ -226,27 +239,42 @@ const estiloEntrada = {
   borderRadius: 8, padding: '8px 10px', fontFamily: 'inherit', fontSize: 13,
 };
 
-/* ─────────────────────────────── identificación */
+/* ─────────────────────────────── ingreso */
 
-function BarraSesion({ sesion, setSesion, usuarios }) {
+/**
+ * Ingreso con PIN, en el rincón superior derecho.
+ *
+ * Un solo campo. El servidor resuelve nombre y área a partir del PIN, así que
+ * acá no se elige área ni se escribe el nombre: Cobranza señaló el ingreso como
+ * lo más confuso del tablero, y eran tres pasos para lo que es uno.
+ *
+ * Los mensajes de error se muestran TAL CUAL los manda el servidor. Llevan la
+ * cuenta de intentos que quedan antes de que el ingreso se bloquee, y esa
+ * cuenta la lleva el servidor: un contador propio acá se desincronizaría en el
+ * primer intento hecho desde otro navegador, y mentiría con toda confianza.
+ */
+function Ingreso({ sesion, setSesion }) {
   const [abierto, setAbierto] = useState(false);
-  const [area, setArea] = useState('cobranza');
-  const [elegido, setElegido] = useState(null);
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
 
-  const delArea = usuarios.filter((u) => u.area === area);
-
   async function entrar() {
     setCargando(true); setError('');
-    const r = await llamar({ accion: 'entrar', usuario: elegido.usuario, pin });
+    const r = await llamar({ accion: 'entrar', pin });
     setCargando(false);
+
+    // Si el servidor no habló claro no se puede decir que el PIN esté mal: sería
+    // acusar a la persona de un error que quizá no cometió, y con la cuenta de
+    // intentos a la vista eso alarma sin razón. Tampoco se sabe si el intento
+    // llegó a contarse.
+    if (sinRespuestaClara(r)) { setError(AVISO_INGRESO); setPin(''); return; }
+
     if (!r.ok) { setError(r.error || 'No se pudo entrar'); setPin(''); return; }
-    const s = { token: r.token, area: r.area, usuario: r.usuario, nombre: r.nombre, foto: r.foto };
+    const s = { token: r.token, nombre: r.nombre, area: r.area };
     localStorage.setItem(LLAVE_SESION, JSON.stringify(s));
     setSesion(s);
-    setAbierto(false); setElegido(null); setPin('');
+    setAbierto(false); setPin('');
   }
 
   function salir() {
@@ -254,120 +282,85 @@ function BarraSesion({ sesion, setSesion, usuarios }) {
     setSesion(null);
   }
 
+  // Con sesión: el nombre y el área, y nada más.
   if (sesion) {
     return (
       <span style={{
-        display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, color: T.texto2,
-        alignSelf: 'flex-end',
+        display: 'flex', gap: 9, alignItems: 'baseline', fontSize: 12, whiteSpace: 'nowrap',
       }}>
-        <Avatar usuario={sesion.usuario} foto={sesion.foto} tam={26} />
-        <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.25 }}>
-          <b style={{ color: T.texto, fontSize: 12 }}>{sesion.usuario}</b>
-          <span style={{ textTransform: 'capitalize', fontSize: 11 }}>{sesion.area}</span>
+        <span>
+          <b style={{ color: T.blanco, fontWeight: 600 }}>{sesion.nombre}</b>
+          <span style={{ color: T.azulNav }}> · {nombreArea(sesion.area) || sesion.area}</span>
         </span>
         <button onClick={salir} style={{
-          background: 'none', border: 0, color: T.azul, fontSize: 12, cursor: 'pointer', padding: 0,
+          background: 'none', border: 0, color: T.azulNav, fontSize: 12,
+          cursor: 'pointer', padding: 0, textDecoration: 'underline',
         }}>Salir</button>
       </span>
     );
   }
 
   return (
-    <>
-      <button onClick={() => setAbierto(!abierto)} style={{
-        width: '100%', textAlign: 'center', fontSize: 12, fontWeight: 600,
-        padding: '8px 12px', borderRadius: T.rPill,
-        background: T.blanco, color: T.navy, border: `0.5px solid ${T.linea2}`, cursor: 'pointer',
-      }}>ACCEDER PARA EDITAR</button>
+    <span style={{ position: 'relative', flex: 'none' }}>
+      <button onClick={() => { setAbierto(!abierto); setError(''); }} style={{
+        background: 'none', border: `0.5px solid ${T.azulNav}`, color: T.blanco,
+        fontSize: 12, fontWeight: 600, padding: '6px 15px', borderRadius: T.rPill,
+        cursor: 'pointer', whiteSpace: 'nowrap',
+      }}>Ingreso</button>
+
       {abierto && (
         <div style={{
-          width: '100%', marginTop: 8, background: T.crema, border: `0.5px solid ${T.linea}`,
-          borderRadius: T.rCard, padding: 14,
+          position: 'absolute', top: 'calc(100% + 8px)', right: 0, zIndex: 30,
+          width: 236, background: T.blanco, color: T.texto,
+          border: `0.5px solid ${T.linea}`, borderRadius: T.rCard,
+          padding: 13, boxShadow: '0 6px 22px rgba(26,34,56,.20)',
+          textAlign: 'left', fontWeight: 400,
         }}>
-          {!usuarios.length ? (
-            <p style={{ fontSize: 12.5, color: T.texto2 }}>
-              No hay usuarios cargados. Agrégalos en la hoja Usuarios del archivo de la base.
-            </p>
-          ) : !elegido ? (
-            <>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 12 }}>
-                {AREAS.map(([k, txt]) => (
-                  <Filtro key={k} activa={area === k} onClick={() => setArea(k)}>{txt}</Filtro>
-                ))}
-              </div>
-              {delArea.length === 0 ? (
-                <p style={{ fontSize: 12.5, color: T.texto2 }}>Nadie registrado en esta área todavía.</p>
-              ) : (
-                <div style={{
-                  display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8,
-                }}>
-                  {delArea.map((u) => (
-                    <button key={u.usuario} onClick={() => { setElegido(u); setError(''); }} style={{
-                      display: 'flex', gap: 9, alignItems: 'center', textAlign: 'left',
-                      background: T.blanco, border: `0.5px solid ${T.linea}`,
-                      borderRadius: T.rInput, padding: '8px 10px', cursor: 'pointer',
-                    }}>
-                      <Avatar usuario={u.usuario} foto={u.foto} tam={30} />
-                      <span style={{ minWidth: 0 }}>
-                        <b style={{ display: 'block', fontSize: 12.5, color: T.texto }}>{u.usuario}</b>
-                        <span style={{
-                          display: 'block', fontSize: 11, color: T.texto2,
-                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        }}>{u.nombre}</span>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </>
-          ) : (
-            <>
-              <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12 }}>
-                <Avatar usuario={elegido.usuario} foto={elegido.foto} tam={38} />
-                <span>
-                  <b style={{ display: 'block', fontSize: 13.5 }}>{elegido.nombre}</b>
-                  <span style={{ fontSize: 12, color: T.texto2, textTransform: 'capitalize' }}>{elegido.area}</span>
-                </span>
-                <span style={{ flex: 1 }} />
-                <button onClick={() => { setElegido(null); setPin(''); setError(''); }} style={{
-                  background: 'none', border: 0, color: T.azul, fontSize: 12, cursor: 'pointer',
-                }}>Cambiar</button>
-              </div>
-              <Campo etiqueta="Tu PIN">
-                <input
-                  type="password" inputMode="numeric" value={pin} autoFocus
-                  onChange={(ev) => setPin(ev.target.value.replace(/\D/g, ''))}
-                  onKeyDown={(ev) => { if (ev.key === 'Enter' && pin) entrar(); }}
-                  style={{ ...estiloEntrada, letterSpacing: '.3em', fontSize: 16 }}
-                />
-              </Campo>
-              {error && <p style={{ fontSize: 12, color: T.rojo, marginBottom: 8 }}>{error}</p>}
-              <p style={{ fontSize: 11.5, color: T.texto2, marginBottom: 10, lineHeight: 1.5 }}>
-                Tu nombre queda en la bitácora en cada cambio que hagas.
-              </p>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <Boton primario onClick={entrar} disabled={cargando || pin.length < 4}>
-                  {cargando ? 'Entrando…' : 'Entrar'}
-                </Boton>
-                <Boton onClick={() => setAbierto(false)}>Cancelar</Boton>
-              </div>
-            </>
+          <Campo etiqueta="Tu PIN">
+            <input
+              type="password" inputMode="numeric" autoComplete="off"
+              value={pin} autoFocus
+              onChange={(ev) => setPin(ev.target.value.replace(/\D/g, ''))}
+              onKeyDown={(ev) => { if (ev.key === 'Enter' && pin && !cargando) entrar(); }}
+              style={{ ...estiloEntrada, letterSpacing: '.3em', fontSize: 16 }}
+            />
+          </Campo>
+
+          {/* Tal cual lo manda el servidor, completo: dice cuántos intentos
+              quedan antes del bloqueo, y eso no se resume. */}
+          {error && (
+            <p style={{
+              fontSize: 12, color: T.rojo, margin: '0 0 9px', lineHeight: 1.45,
+            }}>{error}</p>
           )}
+
+          <p style={{ fontSize: 11.5, color: T.texto2, margin: '0 0 10px', lineHeight: 1.45 }}>
+            Tu nombre queda en la bitácora en cada cambio que hagas.
+          </p>
+
+          <div style={{ display: 'flex', gap: 8 }}>
+            {/* Solo se exige que haya algo escrito. Cuántos dígitos tiene un PIN
+                lo sabe el servidor, y una regla de largo acá podría dejar un
+                botón apagado para siempre sobre un PIN válido. */}
+            <Boton primario onClick={entrar} disabled={cargando || !pin}>
+              {cargando ? 'Entrando…' : 'Entrar'}
+            </Boton>
+            <Boton onClick={() => { setAbierto(false); setPin(''); setError(''); }}>Cancelar</Boton>
+          </div>
         </div>
       )}
-    </>
+    </span>
   );
 }
 
 /* ─────────────────────────────── acciones de una ficha */
 
-function Acciones({ e, sesion, onListo }) {
+function Acciones({ e, sesion, onListo, onDudoso }) {
   const [panel, setPanel] = useState(null);
   const [motivo, setMotivo] = useState('');
   const [texto, setTexto] = useState('');
   const [valor, setValor] = useState('');
   const [dia, setDia] = useState(hoyISO());
-  const [avisar, setAvisar] = useState(false);
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
   const [confirmarReabrir, setConfirmarReabrir] = useState(false);
@@ -382,14 +375,33 @@ function Acciones({ e, sesion, onListo }) {
 
   function abrir(cual) {
     setPanel(cual); setError(''); setMotivo(''); setTexto('');
-    setValor(''); setDia(hoyISO()); setAvisar(false);
+    setValor(''); setDia(hoyISO());
     setCampos(Object.fromEntries(CAMPOS_CORREGIBLES.map(([k]) => [k, actual(k)])));
   }
 
   async function enviar(accion, extra) {
     setCargando(true); setError('');
-    const r = await llamar({ accion, id: e.id, token: sesion.token, ...extra });
-    setCargando(false);
+    let r;
+    try {
+      r = await llamar({ accion, id: e.id, token: sesion.token, ...extra });
+    } finally {
+      // En el finally a propósito: pase lo que pase —incluida una excepción que
+      // no previmos— el indicador de «enviando» se apaga y el botón vuelve a
+      // estar vivo. Un botón mudo, que ni actúa ni se queja, es peor que un
+      // botón que falla: no hay nada que la persona pueda hacer salvo recargar.
+      setCargando(false);
+    }
+
+    if (sinRespuestaClara(r)) {
+      // No se puede decir que falló. Se deja el panel abierto para no perder lo
+      // escrito, se muestra el aviso, y el listado se recarga para que la
+      // persona vea el estado real antes de decidir si repite.
+      // El aviso de ESCRITURA, no el que manda la ruta: la ruta usa un texto
+      // neutro porque no sabe qué se estaba haciendo. Acá sí se sabe.
+      setError(AVISO_ESCRITURA);
+      onDudoso(AVISO_ESCRITURA);
+      return;
+    }
     if (!r.ok) { setError(r.error || 'No se pudo guardar'); return; }
     setPanel(null);
     onListo(r.mensaje);
@@ -466,7 +478,14 @@ function Acciones({ e, sesion, onListo }) {
       <p style={{ fontSize: 12, color: T.texto2 }}>
         {anulado(e) ? 'Expediente anulado. No admite cambios.'
           : e.estado === 'CERRADO' ? 'Expediente finalizado. No admite cambios.'
-          : `Este expediente le toca a ${e.responsable}.`}
+          : e.responsable ? `Este expediente le toca a ${e.responsable}.`
+          // Lo que hay que HACER, no lo que se rompió por dentro. Quien lee esto
+          // está en Cobranza o en Tesorería, y «la fórmula de la columna
+          // responsable» le dice que el sistema está roto y que no es su
+          // problema. El detalle técnico está en el comentario de `agrupar`, en
+          // contar.js, que es donde le sirve a quien vaya a arreglarlo.
+          : 'Este expediente quedó sin área asignada, así que no le toca a nadie y no '
+            + 'va a avanzar solo. Avisa a Legal para que lo revise.'}
       </p>
     );
   }
@@ -687,13 +706,18 @@ function Acciones({ e, sesion, onListo }) {
               : !motivo ? 'Falta elegir el motivo.'
               : `Faltan ${faltanTexto} caracteres.`}
           </p>
-          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12.5, marginBottom: 10 }}>
-            <input type="checkbox" checked={avisar} onChange={(ev) => setAvisar(ev.target.checked)} style={{ marginTop: 2 }} />
-            <span>Avisar al cliente por correo. Déjalo sin marcar si es una solicitud de prueba o duplicada.</span>
-          </label>
+          {/* Acá había una casilla «Avisar al cliente por correo». Se quitó, y no
+              es cosmético: el sistema manda UN solo correo en toda su vida, el de
+              la constancia cuando se levanta la garantía. Los avisos de solicitud
+              recibida, pago validado, observación y anulación están apagados en el
+              servidor.
+              Un correo por cada cambio de estado reconstruye la coordinación por
+              bandeja de entrada que este sistema existe para eliminar, y crea un
+              segundo registro capaz de contradecir a la hoja. Decisión de Legal.
+              No la repongas sin hablarlo con ellos. */}
           <div style={{ display: 'flex', gap: 8 }}>
             <Boton peligro disabled={!listoAnular || cargando}
-                   onClick={() => enviar('anular', { motivo, texto, avisarCliente: avisar })}>
+                   onClick={() => enviar('anular', { motivo, texto })}>
               {cargando ? 'Anulando…' : 'Anular expediente'}
             </Boton>
             <Boton onClick={() => setPanel(null)}>Cancelar</Boton>
@@ -706,7 +730,7 @@ function Acciones({ e, sesion, onListo }) {
 
 /* ─────────────────────────────── ficha */
 
-function Ficha({ e, indice, sesion, onListo, fotos }) {
+function Ficha({ e, indice, sesion, onListo, onDudoso, fotos }) {
   const [abierta, setAbierta] = useState(false);
   const color = COLOR_ESTADO[e.estado] || T.linea2;
   const [bgEstado, txEstado] = FONDO_ESTADO[e.estado] || [T.neutroBg, T.texto2];
@@ -849,9 +873,10 @@ function Ficha({ e, indice, sesion, onListo, fotos }) {
                     <div style={{ fontSize: 11, color: T.texto2, marginBottom: 4, display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' }}>
                       <Avatar usuario={c.usuario} foto={fotos[c.usuario]} tam={20} />
                       <b style={{ color: T.texto, fontWeight: 600 }}>{c.usuario}</b>
-                      {/* Con el usuario LEGAL esto decía «LEGAL  Legal». El área
-                          solo agrega información cuando no es el nombre. */}
-                      {claveArea(c.area) !== claveArea(c.usuario) && <span>{c.area}</span>}
+                      {/* Decía «LEGAL  Legal», y después «COBRANZAS Cobranza»:
+                          la comparación exacta no veía el plural. El área solo
+                          agrega información cuando no es la misma palabra. */}
+                      {!esElMismoNombre(c.area, c.usuario) && <span>{c.area}</span>}
                       <span>{fechaHora(c.fecha)}</span>
                     </div>
                     {c.motivo && <div style={{ fontWeight: 600, marginBottom: 2 }}>{c.motivo}</div>}
@@ -888,7 +913,7 @@ function Ficha({ e, indice, sesion, onListo, fotos }) {
           <section>
             <Rotulo>Acciones</Rotulo>
             <div style={{ marginTop: 8 }}>
-              <Acciones e={e} sesion={sesion} onListo={onListo} />
+              <Acciones e={e} sesion={sesion} onListo={onListo} onDudoso={onDudoso} />
             </div>
           </section>
 
@@ -909,8 +934,10 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
   const router = useRouter();
   const [sesion, setSesion] = useState(null);
   const [aviso, setAviso] = useState('');
+  // Un resultado que no se pudo confirmar no se desvanece a los seis segundos
+  // como un «guardado»: se queda hasta que la persona lo cierre.
+  const [avisoDuda, setAvisoDuda] = useState('');
   const [avisoSesion, setAvisoSesion] = useState('');
-  const [rol, setRol] = useState('todos');
   const [estado, setEstado] = useState(null);
   const [regimen, setRegimen] = useState('todos');
   const [plazo, setPlazo] = useState('todos');
@@ -934,10 +961,16 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
     const r = await llamar({ accion: 'listar', token });
     setCargandoLista(false);
     if (!r.ok) {
-      if (r.motivo === 'conexion') {
-        // Problema de transporte, no del token: se mantiene la sesión y se
-        // ofrece reintentar, en vez de forzar un PIN nuevo por una falla ajena.
-        setErrorLista(r.error || 'No se pudo cargar el listado. Intenta de nuevo.');
+      // LEER es repetible sin riesgo, así que acá no hay nada que advertir: se
+      // dice qué pasó y se ofrece reintentar. Y NO se cierra la sesión — el
+      // problema es del transporte o de una respuesta ilegible, no del token.
+      //
+      // Sin esta rama, un `listar` que volviera ilegible caía en la de abajo y
+      // decía «Tu sesión venció»: falso, y obliga a poner el PIN de nuevo por
+      // una falla ajena. Y el aviso de escritura acá no tendría sentido: nadie
+      // estaba guardando nada.
+      if (sinRespuestaClara(r)) {
+        setErrorLista(AVISO_LECTURA);
         return;
       }
       // Cualquier otro rechazo es el token: vencido o inválido. No dejar una
@@ -962,8 +995,10 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
       const s = localStorage.getItem(LLAVE_SESION);
       if (s) {
         const dato = JSON.parse(s);
-        setSesion(dato);
-        if (ESTADOS_POR_ROL[dato.area]) setRol(dato.area);
+        // Una sesión guardada antes de esta versión traía `usuario` y no
+        // `nombre`. Se traduce en vez de descartarla: el token sigue valiendo
+        // 12 horas y no hay por qué echar a quien ya estaba dentro.
+        setSesion({ token: dato.token, nombre: dato.nombre || dato.usuario || '', area: dato.area });
       }
     } catch { /* sesión ilegible: se pide de nuevo */ }
   }, []);
@@ -978,9 +1013,20 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
 
   function trasAccion(mensaje) {
     setAviso(mensaje || 'Cambio guardado.');
+    setAvisoDuda('');
     router.refresh();
     if (sesion?.token) cargarListado(sesion.token);
     setTimeout(() => setAviso(''), 6000);
+  }
+
+  // La acción terminó sin que se pueda afirmar si llegó. Se recarga el listado
+  // para que la pantalla muestre el estado real de la hoja: es lo único que
+  // permite a la persona decidir si repetir sin arriesgarse a duplicar.
+  function trasDuda(mensaje) {
+    setAvisoDuda(mensaje || AVISO_ESCRITURA);
+    setAviso('');
+    router.refresh();
+    if (sesion?.token) cargarListado(sesion.token);
   }
 
   // Con texto en el buscador, Vista/Régimen/Plazo no se aplican — se atenúan
@@ -996,8 +1042,6 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
   // igual que cualquier otro estado — sin un interruptor aparte que haya que
   // mantener sincronizado.
   const vivos = useMemo(() => vivosDe(expedientes, estado), [expedientes, estado]);
-
-  const porRol = useMemo(() => porRolDe(vivos, rol, estado), [vivos, rol, estado]);
 
   // Los nueve números de las tarjetas. GLOBALES: no reciben la Vista ni la
   // tarjeta elegida. Un contador dice cuántos hay en ese estado en toda la
@@ -1023,7 +1067,7 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
       );
     }
 
-    return porRol.filter((e) => {
+    return vivos.filter((e) => {
       if (estado && e.estado !== estado) return false;
       if (regimen !== 'todos' && e.regimen !== regimen.toUpperCase()) return false;
       if (plazo === 'vencido' && !vencido(e)) return false;
@@ -1040,7 +1084,7 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
       }
       return true;
     });
-  }, [expedientes, porRol, estado, regimen, plazo, busqueda, fechaDesde, fechaHasta]);
+  }, [expedientes, vivos, estado, regimen, plazo, busqueda, fechaDesde, fechaHasta]);
 
   // usuario → foto, para pintar los avatares del hilo y de quién registró la solicitud
   const fotos = useMemo(() => {
@@ -1049,20 +1093,34 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
     return m;
   }, [usuarios]);
 
-  const alertados = porRol.filter((e) => e.alerta);
+  // La alerta de Ruta B se cuenta sobre TODOS los expedientes vivos, no sobre
+  // la lista filtrada: una advertencia que cambia porque alguien pulsó una
+  // tarjeta es la misma trampa que tenían los contadores.
+  const alertados = useMemo(
+    () => expedientes.filter((e) => e.alerta && !anulado(e)),
+    [expedientes]
+  );
 
-  // Hay un estado elegido que la Vista actual no incluye: el listado lo muestra
-  // igual, y el encabezado lo dice. Con el buscador activo no aplica — ahí no
-  // se aplica ningún filtro y el encabezado ya lo anuncia de otra forma.
-  const fueraDeVista = !buscando && !!estado && !enLaVista(estado, rol);
+  // Los tres grupos del listado. Son orden, no filtro: la suma de los tres es
+  // la lista completa, siempre.
+  const grupos = useMemo(() => agrupar(lista, sesion?.area), [lista, sesion?.area]);
 
   return (
     <div style={{ minHeight: '100vh', background: T.crema, color: T.texto, fontSize: 14 }}>
 
       <header style={{ background: T.navy, color: T.blanco, padding: '15px 0 0' }}>
         <div style={{ maxWidth: 512, margin: '0 auto', padding: '0 16px' }}>
-          <div style={{ fontSize: 15, fontWeight: 500 }}>GoTrack</div>
-          <div style={{ fontSize: 11, color: T.azulNav }}>Levantamiento de Garantía Mobiliaria</div>
+          {/* El ingreso vive en el rincón superior derecho, como en Ventas de
+              segunda: es lo primero que se busca y no compite con nada. */}
+          <div style={{
+            display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12,
+          }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 15, fontWeight: 500 }}>GoTrack</div>
+              <div style={{ fontSize: 11, color: T.azulNav }}>Levantamiento de Garantía Mobiliaria</div>
+            </div>
+            <Ingreso sesion={sesion} setSesion={setSesion} />
+          </div>
           <div style={{
             display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between',
             gap: 10, marginTop: 13,
@@ -1100,25 +1158,6 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
         </div>
       </header>
 
-      <div style={{ background: T.blanco, borderBottom: T.borde }}>
-        <div style={{
-          maxWidth: 512, margin: '0 auto',
-          padding: '11px 16px', display: 'flex', flexDirection: 'column', gap: 10,
-        }}>
-          <div style={{ textAlign: 'center' }}><Rotulo>Vista</Rotulo></div>
-          <div style={{
-            display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8,
-            opacity: buscando ? 0.6 : 1, transition: '.15s',
-          }}>
-            {[['todos', 'Vista completa'], ...AREAS]
-              .map(([k, txt]) => (
-                <Filtro key={k} activa={rol === k} onClick={() => { setRol(k); setEstado(null); }}>{txt}</Filtro>
-              ))}
-          </div>
-          <BarraSesion sesion={sesion} setSesion={setSesion} usuarios={usuarios} />
-        </div>
-      </div>
-
       <main style={{ maxWidth: 512, margin: '0 auto', padding: '18px 16px 60px' }}>
 
         {aviso && (
@@ -1126,6 +1165,25 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
             background: T.azulBg, border: `0.5px solid ${T.azul}`, borderRadius: T.rCard,
             padding: '11px 14px', marginBottom: 14, fontSize: 13, color: T.azul, fontWeight: 500,
           }}>{aviso}</div>
+        )}
+
+        {/* Ni verde ni rojo: ámbar, porque no sabemos si salió bien o mal, y
+            afirmar cualquiera de las dos cosas sería mentir. Tampoco se va
+            solo — se cierra a mano, cuando la persona ya miró el expediente. */}
+        {avisoDuda && (
+          <div style={{
+            background: T.ambarBg, border: `0.5px solid ${T.ambar}`, borderLeft: `4px solid ${T.ambar}`,
+            borderRadius: T.rCard, padding: '11px 14px', marginBottom: 14,
+            display: 'flex', gap: 12, alignItems: 'flex-start',
+          }}>
+            <span style={{ fontSize: 13, color: T.texto, lineHeight: 1.5, flex: 1 }}>
+              {avisoDuda}
+            </span>
+            <button onClick={() => setAvisoDuda('')} style={{
+              background: 'none', border: 0, color: T.ambar, fontSize: 12,
+              cursor: 'pointer', padding: 0, fontWeight: 600, whiteSpace: 'nowrap',
+            }}>Entendido</button>
+          </div>
         )}
 
         {avisoSesion && (
@@ -1295,11 +1353,6 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
           </h2>
           <span style={{ fontSize: 12, color: T.texto2 }}>
             {lista.length} {lista.length === 1 ? 'expediente' : 'expedientes'}
-            {/* La Vista elegida se conserva, pero el estado elegido manda sobre
-                ella. Sin esta línea sería un override silencioso: la Vista
-                marcada en Cobranza y el listado lleno de expedientes que no
-                son de Cobranza, sin explicación. */}
-            {fueraDeVista && ` · mostrando fuera de la Vista ${nombreArea(rol)}`}
           </span>
         </div>
 
@@ -1311,7 +1364,12 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
             }}>
               Identifícate arriba para ver el detalle de los expedientes.
             </div>
-          ) : cargandoLista ? (
+          // Solo cuando todavía no hay nada que mostrar. Antes se ponía en cada
+          // recarga, y como reemplaza al listado entero, desmontaba las fichas:
+          // después de cada acción se cerraban todas, y con ellas el panel y lo
+          // que la persona hubiera escrito. Un indicador de carga solo debe
+          // reemplazar contenido cuando no hay contenido.
+          ) : (cargandoLista && !listadoRecibido) ? (
             <div style={{
               background: T.blanco, border: T.borde, borderRadius: T.rCard,
               padding: '16px 18px', fontSize: 13, color: T.texto2,
@@ -1334,9 +1392,72 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
               Ningún expediente coincide con estos filtros. Quita alguno para ver más resultados.
             </div>
           ) : (
-            lista.map((e, i) => (
-              <Ficha key={e.id} e={e} indice={i + 1} sesion={sesion} onListo={trasAccion} fotos={fotos} />
-            ))
+            // Los tres grupos, en orden. La numeración corre a través de los
+            // tres, así que «expediente 4» sigue siendo uno solo en la pantalla.
+            (() => {
+              let n = 0;
+              const bloques = [
+                {
+                  clave: 'anomalias',
+                  fichas: grupos.anomalias,
+                  titulo: 'Sin responsable',
+                  color: T.rojo,
+                  fondo: T.rojoBg,
+                  borde: T.rojoLinea,
+                  // Detenidos, y a quién avisar. El «por qué» técnico —la
+                  // fórmula de la columna responsable devolvió vacío— vive en
+                  // el comentario de `agrupar`, en contar.js.
+                  nota: 'Quedaron sin área asignada, así que no le tocan a nadie y están '
+                      + 'detenidos: no van a avanzar solos. Avisa a Legal para que los revise.',
+                },
+                {
+                  clave: 'teToca',
+                  fichas: grupos.teToca,
+                  titulo: sesion ? `Te toca · ${nombreArea(sesion.area) || sesion.area}` : 'Te toca',
+                  color: T.azul,
+                  fondo: T.azulBg,
+                  borde: T.azul,
+                  nota: null,
+                },
+                {
+                  clave: 'resto',
+                  fichas: grupos.resto,
+                  titulo: 'El resto',
+                  color: T.texto2,
+                  fondo: T.neutroBg,
+                  borde: T.linea2,
+                  nota: null,
+                },
+              ].filter((b) => b.fichas.length > 0);
+
+              return bloques.map((b) => (
+                <div key={b.clave} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{
+                    background: b.fondo, border: `0.5px solid ${b.borde}`,
+                    borderRadius: T.rInput, padding: '7px 12px', marginTop: 4,
+                  }}>
+                    <div style={{
+                      fontSize: 11, fontWeight: 600, color: b.color,
+                      letterSpacing: '.08em', textTransform: 'uppercase',
+                    }}>
+                      {b.titulo} · {b.fichas.length}
+                    </div>
+                    {b.nota && (
+                      <div style={{ fontSize: 12, color: T.texto, marginTop: 3, lineHeight: 1.45 }}>
+                        {b.nota}
+                      </div>
+                    )}
+                  </div>
+                  {b.fichas.map((e) => {
+                    n += 1;
+                    return (
+                      <Ficha key={e.id} e={e} indice={n} sesion={sesion}
+                             onListo={trasAccion} onDudoso={trasDuda} fotos={fotos} />
+                    );
+                  })}
+                </div>
+              ));
+            })()
           )}
         </div>
 
@@ -1346,6 +1467,8 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
           </p>
         )}
       </main>
+
+      <Pie />
     </div>
   );
 }

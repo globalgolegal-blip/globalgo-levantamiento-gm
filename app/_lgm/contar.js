@@ -27,7 +27,7 @@
 //    filtro de área para que Cobranza y Tesorería no vieran 0 para siempre. Sin
 //    filtro de área en los contadores, no hay de qué eximirlo.
 
-import { ESTADOS_POR_ROL, TARJETAS, normalizarEstado } from './tokens.js';
+import { TARJETAS, normalizarEstado, claveArea } from './tokens.js';
 
 export const esAnulado = (e) => e.estado === 'ANULADO';
 
@@ -57,17 +57,6 @@ export function normalizarConteos(conteos) {
   return out;
 }
 
-/**
- * ¿Este estado entra en el LISTADO con la Vista puesta en `rol`?
- *
- * Solo para el listado: los contadores no filtran por Vista (regla 3 arriba).
- *
- * Ya no hace falta eximir a ANULADO: elegir un estado manda sobre la Vista
- * (ver porRolDe), y los anulados solo aparecen cuando se eligió su tarjeta.
- */
-export const enLaVista = (estado, rol) =>
-  rol === 'todos' || (ESTADOS_POR_ROL[rol] || []).includes(estado);
-
 // Ver Anulados es elegir el estado ANULADO desde su tarjeta: mientras no esté
 // elegido, los anulados no son parte de la lista. Esto es para LA LISTA de la
 // pantalla — los contadores no pasan por acá, a propósito (regla 1 arriba).
@@ -75,15 +64,43 @@ export const vivosDe = (expedientes, estado) =>
   (expedientes || []).filter((e) => (estado === 'ANULADO' ? esAnulado(e) : !esAnulado(e)));
 
 /**
- * Filtro de Vista del listado.
+ * Los tres grupos del listado. UNA sola lista, con todo; los grupos son orden,
+ * no filtro. Ningún expediente puede quedar fuera de los tres.
  *
- * Si la persona eligió un estado desde su tarjeta, esa elección manda sobre la
- * Vista: es una intención más específica, y así el listado concuerda con el
- * contador, que es global. No es un override silencioso — el encabezado del
- * listado dice «mostrando fuera de la Vista X» cuando pasa.
+ * Esto reemplaza al filtro por Vista, y la diferencia no es cosmética. El filtro
+ * por área escondía expedientes: LGM-2026-0007 estaba en PAGO OK y le tocaba a
+ * Legal, así que no le aparecía a Cobranza — y Cobranza es justamente quien
+ * tiene que observarlo cuando el cliente desiste. Un filtro automático por área
+ * volvería el desistimiento imposible de pedir, sin que nadie se enterara hasta
+ * que un cliente reclamara.
+ *
+ * `responsable` es texto para mostrar, no una clave: trae «Tesorería», «Notaría
+ * Quintanilla», «SUNARP» o «—». Se normaliza con claveArea antes de comparar.
+ * «Notaría Quintanilla» y «SUNARP» no son áreas del tablero y no coinciden con
+ * ninguna sesión: caen en `resto`, no desaparecen.
+ *
+ * Y `responsable` no se guarda: es una fórmula de la hoja que busca el estado en
+ * una tabla. Si el rango de búsqueda se queda corto —ya pasó con un estado
+ * nuevo— devuelve CADENA VACÍA sin dar un solo error. Un expediente así está
+ * atascado y nadie lo va a mirar, así que va a `anomalias`, que se pinta arriba
+ * y marcada. Esconderlo es exactamente el error que no queremos repetir.
  */
-export const porRolDe = (vivos, rol, estado = null) =>
-  (rol === 'todos' || estado ? vivos : vivos.filter((e) => enLaVista(e.estado, rol)));
+export function agrupar(lista, area) {
+  const anomalias = [];
+  const teToca = [];
+  const resto = [];
+
+  (lista || []).forEach((e) => {
+    const responsable = claveArea(e.responsable);
+    // Vacío es la anomalía. «—» NO lo es: es el responsable legítimo de un
+    // expediente que ya terminó, y significa «nadie, y está bien».
+    if (!responsable) anomalias.push(e);
+    else if (area && responsable === area) teToca.push(e);
+    else resto.push(e);
+  });
+
+  return { anomalias, teToca, resto };
+}
 
 /**
  * Un número por tarjeta.

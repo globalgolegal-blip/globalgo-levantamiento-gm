@@ -132,6 +132,24 @@ export const claveArea = (s) => String(s || '')
   .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   .trim().toLowerCase();
 
+/**
+ * ¿El nombre de usuario y el del área son la misma palabra?
+ *
+ * Con el usuario LEGAL y el área Legal, la cabecera de una observación decía
+ * «LEGAL  Legal». Comparar exacto arreglaba ese caso y dejaba otro: el usuario
+ * COBRANZAS contra el área Cobranza se seguía leyendo doble, porque la única
+ * diferencia era la ese del plural.
+ *
+ * Se comparan sin acentos, sin mayúsculas y sin la ese final. No funde nombres
+ * de verdad: ALONSO contra Legal, o DIANA contra Cobranza, siguen siendo
+ * distintos — lo comprueba la regla 9 de scripts/verificar-acciones.mjs.
+ */
+export const esElMismoNombre = (a, b) => {
+  const raiz = (s) => claveArea(s).replace(/s$/, '');
+  const x = raiz(a);
+  return !!x && x === raiz(b);
+};
+
 // Los estados observados, sacados de la propia tabla de estados. Escrito así y
 // no a mano para que un estado observado nuevo entre solo — es la puerta por la
 // que se cuelan los estados que el tablero no conoce.
@@ -194,13 +212,23 @@ export const AREAS = [
 
 export const nombreArea = (rol) => (AREAS.find(([clave]) => clave === rol) || [, null])[1];
 
-// Qué estados ve cada área.
-export const ESTADOS_POR_ROL = {
-  cobranza:  ['SOLICITADO', 'OBS. TESORERÍA', 'OBS. LEGAL', 'LEVANTADO', 'CERRADO'],
-  tesoreria: ['SOLICITADO', 'OBS. TESORERÍA', 'PAGO OK', 'CERRADO'],
-  legal:     ['PAGO OK', 'EN TRÁMITE', 'EN NOTARÍA', 'EN SUNARP', 'OBS. LEGAL', 'OBS. COBRANZA',
-              'LEVANTADO', 'CERRADO', 'ANULADO'],
-};
+// ─────────────────────────────────────────────────────────────────────────────
+// ACÁ VIVÍA ESTADOS_POR_ROL, y se quitó a propósito. No lo repongas.
+//
+// Era la tabla de «qué estados ve cada área», y alimentaba el selector de VISTA
+// y el filtro del listado. Escondía expedientes: LGM-2026-0007 estaba en PAGO OK
+// y le tocaba a Legal, así que no le aparecía a Cobranza — y Cobranza es
+// justamente quien tiene que observarlo cuando el cliente desiste del trámite.
+// Con un filtro por área, el desistimiento no se puede ni pedir, y nadie se
+// entera hasta que un cliente reclama.
+//
+// Ahora hay UNA lista con todo, y lo que le toca al área de la sesión va primero
+// y marcado (ver `agrupar` en contar.js). El área del PIN decide qué BOTONES
+// aparecen —eso está en acciones.js— no qué se puede ver.
+//
+// Quién es responsable de cada estado ya no se escribe acá: lo dice la columna
+// `responsable` de la hoja, que es una fórmula sobre Catálogos. Un solo sitio.
+// ─────────────────────────────────────────────────────────────────────────────
 
 // Motivos de observación. Reemplázalos por los que el equipo ve de verdad.
 export const MOTIVOS = {
