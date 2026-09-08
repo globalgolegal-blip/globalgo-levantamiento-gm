@@ -13,6 +13,20 @@ import { T } from './tokens';
 
 // Códigos de registro reales. Los dos RUC tienen once dígitos — si alguna vez
 // queda uno con diez o con doce, está mal copiado.
+//
+// La cooperativa cambió de denominación el 08.09.2026. Cambió SOLO el nombre: el
+// RUC, la partida y el registro de banco de datos son los mismos, así que los
+// tres números de esa fila no se tocaron.
+//
+// EL NOMBRE SE ESCRIBE DISTINTO ACÁ Y EN EL AVISO DE ABAJO, Y ES DELIBERADO.
+// No lo unifiques: no es una inconsistencia.
+//
+// Acá va en MAYÚSCULAS Y SIN TILDES —COOPERATIVA DE SERVICIOS MULTIPLES GLOBAL
+// GO PERU— porque va pegado al código PJ, a la constancia y al RUC: es un dato
+// que alguien transcribe, así que se copia como está en la denominación
+// registral, no como se escribiría en prosa. En el aviso de confidencialidad va
+// con tildes y mayúscula inicial, porque ahí es una oración y un nombre sin
+// tildes a mitad de párrafo se lee como un descuido.
 const BANCOS = [
   {
     entidad: 'Global Go S.A.C.',
@@ -21,7 +35,7 @@ const BANCOS = [
     ruc: '20611596155',
   },
   {
-    entidad: 'Coop. de Ahorro y Crédito Promotora de Negocios y Servicios',
+    entidad: 'COOPERATIVA DE SERVICIOS MULTIPLES GLOBAL GO PERU',
     codigo: 'PJ-2026-2095',
     constancia: 'INS-2026-2312',
     ruc: '20523897048',
@@ -104,10 +118,16 @@ export default function Pie() {
         <p style={{
           fontSize: 10.5, color: T.texto3, lineHeight: 1.6, margin: 0, textAlign: 'left',
         }}>
+          {/* Acá el nombre va a mitad de una oración, así que CON tildes y con
+              mayúscula inicial: sin tildes se leería como un descuido. En la
+              tarjeta de arriba va en mayúsculas y sin tildes, porque ahí está
+              pegado al código y al RUC y se transcribe como en la denominación
+              registral. Los dos usos son correctos y la diferencia es
+              deliberada — no la unifiques. */}
           La información contenida en esta plataforma es de carácter confidencial y de uso
-          exclusivo del personal autorizado de Global Go S.A.C. y de la Cooperativa de Ahorro
-          y Crédito Promotora de Negocios y Servicios. Su acceso, reproducción o divulgación
-          no autorizada está prohibida.
+          exclusivo del personal autorizado de Global Go S.A.C. y de la Cooperativa de
+          Servicios Múltiples Global Go Perú. Su acceso, reproducción o divulgación no
+          autorizada está prohibida.
         </p>
 
         <div style={{

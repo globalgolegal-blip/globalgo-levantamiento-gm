@@ -62,11 +62,23 @@ const ENTIDADES = [
     ruc: '20611596155',
   },
   {
-    entidad: 'Coop. de Ahorro y Crédito Promotora de Negocios y Servicios',
+    // Denominación nueva desde el 08.09.2026. Cambió SOLO el nombre: los tres
+    // números son los mismos de antes, y por eso siguen escritos igual acá.
+    entidad: 'COOPERATIVA DE SERVICIOS MULTIPLES GLOBAL GO PERU',
     codigo: 'PJ-2026-2095',
     constancia: 'INS-2026-2312',
     ruc: '20523897048',
   },
+];
+
+// El nombre anterior, para comprobar que no quedó ninguna aparición. Un cambio
+// de denominación a medias es peor que no cambiarlo: dejaría el mismo registro
+// de banco de datos anunciado con dos nombres distintos en la misma pantalla.
+const NOMBRES_ANTERIORES = [
+  'Coop. de Ahorro y Crédito Promotora de Negocios y Servicios',
+  'Cooperativa de Ahorro y Crédito Promotora de Negocios y Servicios',
+  'Ahorro y Crédito',
+  'Promotora de Negocios',
 ];
 
 ENTIDADES.forEach(({ entidad, codigo, constancia, ruc }) => {
@@ -88,12 +100,19 @@ if (fallos === antes2) bien('las dos entidades, sus códigos y sus dos RUC de on
 /* -- 3. el aviso de confidencialidad -------------------------------------- */
 
 console.log('\n3. El aviso de confidencialidad');
+// Acá el nombre va a mitad de frase: en minúsculas y CON tildes. En la tarjeta
+// de arriba va en mayúsculas y sin tildes, que es la forma registral.
 const AVISO = 'La información contenida en esta plataforma es de carácter confidencial y de uso '
-  + 'exclusivo del personal autorizado de Global Go S.A.C. y de la Cooperativa de Ahorro y '
-  + 'Crédito Promotora de Negocios y Servicios. Su acceso, reproducción o divulgación no '
+  + 'exclusivo del personal autorizado de Global Go S.A.C. y de la Cooperativa de '
+  + 'Servicios Múltiples Global Go Perú. Su acceso, reproducción o divulgación no '
   + 'autorizada está prohibida.';
 if (!contiene(AVISO)) mal('el aviso de confidencialidad no coincide palabra por palabra');
 else bien('el aviso está completo y sin cambios');
+
+// Y que el nombre anterior no quede en ninguna parte del pie.
+NOMBRES_ANTERIORES.forEach((viejo) => {
+  if (contiene(viejo)) mal(`quedó el nombre anterior de la cooperativa: «${viejo}»`);
+});
 
 /* -- 4. el cierre y el enlace --------------------------------------------- */
 
