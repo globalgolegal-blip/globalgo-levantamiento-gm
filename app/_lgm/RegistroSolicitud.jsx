@@ -128,7 +128,6 @@ export default function RegistroSolicitud({ sesion, llamar, onCerrar, onListo, o
   if (consulta && !consulta.enLista && !fecha) faltan.push('fecha de firma');
   const doiNum = d.doi.replace(/\D/g, '');
   if (!doiNum) faltan.push('DOI');
-  else if (doiNum.length < 7 || doiNum.length > 12) faltan.push('DOI incompleto (7 a 12 dígitos)');
   if (!d.nombre.trim()) faltan.push('nombre');
   else if (d.nombre.trim().length < 5) faltan.push('nombre completo');
   if (!d.credito.replace(/\D/g, '')) faltan.push('N° de crédito');
