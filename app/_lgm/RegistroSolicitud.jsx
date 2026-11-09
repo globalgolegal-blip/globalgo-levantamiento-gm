@@ -186,7 +186,7 @@ export default function RegistroSolicitud({ sesion, llamar, onCerrar, onListo, o
           }}>×</button>
         </div>
 
-        <Campo etiqueta="Placa del vehículo" ayuda={consultando ? 'Consultando…' : 'Con o sin guion. El monto aparece solo.'}>
+        <Campo etiqueta="Placa del vehículo" ayuda={consultando ? 'Consultando…' : 'Con o sin guion.'}>
           <input value={placa} autoFocus
             onChange={(ev) => setPlaca(ev.target.value.toUpperCase())}
             style={{ ...entrada, letterSpacing: '.08em', fontWeight: 600 }} placeholder="Ej.: 1234-AB" />
