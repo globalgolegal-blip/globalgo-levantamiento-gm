@@ -18,18 +18,11 @@ import {
   sinRespuestaClara, AVISO_ESCRITURA, AVISO_LECTURA, AVISO_INGRESO,
 } from './respuesta';
 import Pie from './Pie';
-import RegistroSolicitud from './RegistroSolicitud';
+import RegistroSolicitud, { leerArchivo } from './RegistroSolicitud';
 
 // Solo quedan los formularios que suben archivos.
 const FORM_COBRANZA    = process.env.NEXT_PUBLIC_LGM_FORM_COBRANZA    || '#';
-const FORM_CIERRE      = process.env.NEXT_PUBLIC_LGM_FORM_CIERRE      || '#';
-const FORM_COMPROBANTE = process.env.NEXT_PUBLIC_LGM_FORM_COMPROBANTE || '#';
 
-// Prefijan el ID del expediente en el formulario, para que nadie tenga que
-// copiarlo a mano — un ID mal tecleado hace que el disparador no encuentre
-// la fila y descarte el envío en silencio.
-const linkCierre = (id) => `${FORM_CIERRE}?usp=pp_url&entry.829618641=${encodeURIComponent(id)}`;
-const linkComprobante = (id) => `${FORM_COMPROBANTE}?usp=pp_url&entry.289993708=${encodeURIComponent(id)}`;
 
 const LLAVE_SESION = 'lgm_sesion';
 
@@ -366,6 +359,7 @@ function Acciones({ e, sesion, onListo, onDudoso }) {
   const [cargando, setCargando] = useState(false);
   const [confirmarReabrir, setConfirmarReabrir] = useState(false);
   const [campos, setCampos] = useState({});
+  const [archivo, setArchivo] = useState(null);
 
   const area = sesion?.area;
   const esNueva = e.regimen === 'NUEVA';
@@ -375,7 +369,7 @@ function Acciones({ e, sesion, onListo, onDudoso }) {
   const actual = (k) => (e[k] == null ? '' : String(e[k]));
 
   function abrir(cual) {
-    setPanel(cual); setError(''); setMotivo(''); setTexto('');
+    setPanel(cual); setError(''); setMotivo(''); setTexto(''); setArchivo(null);
     setValor(''); setDia(hoyISO());
     setCampos(Object.fromEntries(CAMPOS_CORREGIBLES.map(([k]) => [k, actual(k)])));
   }
@@ -431,7 +425,7 @@ function Acciones({ e, sesion, onListo, onDudoso }) {
       botones.push(<Boton key="t" primario onClick={() => abrir('titulo')}>Registrar N° de título</Boton>);
     }
     if ((e.estado === 'EN TRÁMITE' && esNueva) || e.estado === 'EN SUNARP') {
-      botones.push(<Boton key="c" primario href={linkCierre(e.id)}>Cargar boleta y cerrar</Boton>);
+      botones.push(<Boton key="c" primario onClick={() => abrir('boleta')}>Cargar boleta y cerrar</Boton>);
     }
     // Reabrir cambia el estado de un expediente y no se deshace solo — no es
     // un clic suelto, pero tampoco necesita un panel: un paso de confirmación
@@ -471,7 +465,7 @@ function Acciones({ e, sesion, onListo, onDudoso }) {
     botones.push(<Boton key="r" onClick={() => abrir('responder')}>Responder la observación</Boton>);
   }
   if (puedeReemplazarComprobante(e, area)) {
-    botones.push(<Boton key="cp" href={linkComprobante(e.id)}>Reemplazar comprobante</Boton>);
+    botones.push(<Boton key="cp" onClick={() => abrir('comprobante')}>Reemplazar comprobante</Boton>);
   }
 
   if (!botones.length && !panel) {
@@ -515,6 +509,39 @@ function Acciones({ e, sesion, onListo, onDudoso }) {
         }}>{error}</p>
       )}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{botones}</div>
+
+      {(panel === 'boleta' || panel === 'comprobante') && (
+        <div style={{
+          marginTop: 11, background: T.blanco, border: `0.5px solid ${T.linea2}`,
+          borderRadius: T.rInput, padding: 12,
+        }}>
+          <h6 style={{
+            margin: '0 0 6px', fontSize: 12, fontWeight: 600, color: T.navy,
+            textTransform: 'uppercase', letterSpacing: '.06em',
+          }}>{panel === 'boleta' ? 'Cargar boleta de SUNARP y cerrar' : 'Reemplazar comprobante de depósito'}</h6>
+          <p style={{ fontSize: 12.5, color: T.texto2, margin: '0 0 10px', lineHeight: 1.5 }}>
+            {panel === 'boleta'
+              ? 'Se cierra el expediente y se envía al cliente el correo de cierre con esta boleta.'
+              : 'El comprobante anterior queda registrado en el historial. Después responde la observación.'}
+          </p>
+          <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp"
+            onChange={(ev) => { setArchivo(ev.target.files?.[0] || null); setError(''); }}
+            style={{ fontSize: 13, marginBottom: 10 }} />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Boton primario disabled={!archivo || cargando} onClick={async () => {
+              let a;
+              try { a = await leerArchivo(archivo); }
+              catch { setError('No se pudo leer el archivo. Vuelve a adjuntarlo.'); return; }
+              if (a.tam > 3 * 1024 * 1024) { setError('El archivo pesa más de 3 MB. Usa uno más liviano.'); return; }
+              enviar(panel === 'boleta' ? 'cerrarConBoleta' : 'reemplazarComprobante',
+                { archivo: { nombre: a.nombre, tipo: a.tipo, base64: a.base64 } });
+            }}>
+              {cargando ? 'Subiendo…' : panel === 'boleta' ? 'Cerrar expediente' : 'Reemplazar comprobante'}
+            </Boton>
+            <Boton onClick={() => setPanel(null)}>Cancelar</Boton>
+          </div>
+        </div>
+      )}
 
       {panel === 'observar' && (
         <div style={{
