@@ -18,6 +18,7 @@ import {
   sinRespuestaClara, AVISO_ESCRITURA, AVISO_LECTURA, AVISO_INGRESO,
 } from './respuesta';
 import Pie from './Pie';
+import RegistroSolicitud from './RegistroSolicitud';
 
 // Solo quedan los formularios que suben archivos.
 const FORM_COBRANZA    = process.env.NEXT_PUBLIC_LGM_FORM_COBRANZA    || '#';
@@ -955,6 +956,7 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
   // cierto: es que todavía no llegó.
   const [listadoRecibido, setListadoRecibido] = useState(false);
   const [errorLista, setErrorLista] = useState('');
+  const [registrando, setRegistrando] = useState(false);
 
   async function cargarListado(token) {
     setCargandoLista(true);
@@ -1145,18 +1147,33 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
               }}>Levantamiento GM</span>
             </nav>
 
-            {/* La acción más usada del día: siempre visible, con o sin sesión —
-                registrar una solicitud es abrir un formulario, no editar el tablero. */}
-            <a href={FORM_COBRANZA} target="_blank" rel="noopener noreferrer" style={{
+            {/* La acción más usada del día: siempre visible. Se registra dentro del
+                tablero (con sesión, para que la bitácora sepa quién fue): la placa
+                dice sola el régimen y el monto a cobrar. */}
+            <button type="button" onClick={() => {
+              if (!sesion) { setAviso('Identifícate con tu PIN (botón Ingreso) para registrar una solicitud.'); setTimeout(() => setAviso(''), 6000); return; }
+              setRegistrando(true);
+            }} style={{
               background: T.blanco, color: T.navy, fontWeight: 600, fontSize: 13,
-              padding: '9px 16px', borderRadius: T.rPill, textDecoration: 'none',
-              whiteSpace: 'nowrap', marginBottom: 10,
+              padding: '9px 16px', borderRadius: T.rPill, border: 0, cursor: 'pointer',
+              whiteSpace: 'nowrap', marginBottom: 10, fontFamily: 'inherit',
             }}>
               Registrar nueva solicitud
-            </a>
+            </button>
           </div>
         </div>
       </header>
+
+      {registrando && sesion && (
+        <RegistroSolicitud
+          sesion={sesion}
+          llamar={llamar}
+          formAnterior={FORM_COBRANZA}
+          onCerrar={() => setRegistrando(false)}
+          onListo={(m) => { setRegistrando(false); trasAccion(m); }}
+          onDudoso={(m) => { setRegistrando(false); trasDuda(m); }}
+        />
+      )}
 
       <main style={{ maxWidth: 512, margin: '0 auto', padding: '18px 16px 60px' }}>
 
