@@ -126,16 +126,20 @@ export default function RegistroSolicitud({ sesion, llamar, onCerrar, onListo, o
   if (!consulta) faltan.push(consultando ? 'esperar la consulta de la placa' : 'placa');
   if (consulta?.duplicado) faltan.push('revisar el expediente en curso');
   if (consulta && !consulta.enLista && !fecha) faltan.push('fecha de firma');
-  if (!/^\d{8,12}$/.test(d.doi.replace(/\D/g, ''))) faltan.push('DOI');
-  if (d.nombre.trim().length < 5) faltan.push('nombre');
+  const doiNum = d.doi.replace(/\D/g, '');
+  if (!doiNum) faltan.push('DOI');
+  else if (doiNum.length < 7 || doiNum.length > 12) faltan.push('DOI incompleto (7 a 12 dígitos)');
+  if (!d.nombre.trim()) faltan.push('nombre');
+  else if (d.nombre.trim().length < 5) faltan.push('nombre completo');
   if (!d.credito.replace(/\D/g, '')) faltan.push('N° de crédito');
-  if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(d.correo.trim())) faltan.push('correo');
-  else if (d.correo.trim().toLowerCase() !== d.correo2.trim().toLowerCase()) faltan.push('correos iguales');
+  if (!d.correo.trim()) faltan.push('correo');
+  else if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(d.correo.trim())) faltan.push('correo válido');
+  else if (d.correo.trim().toLowerCase() !== d.correo2.trim().toLowerCase()) faltan.push('que los dos correos sean iguales');
   if (!archivo) faltan.push('comprobante');
 
   async function registrar() {
     setError('');
-    if (faltan.length) { setError('Falta: ' + faltan.join(', ')); return; }
+    if (faltan.length) { setError('Revisa: ' + faltan.join(' · ')); return; }
     setEnviando(true);
     let voucher;
     try { voucher = await leerArchivo(archivo); }
