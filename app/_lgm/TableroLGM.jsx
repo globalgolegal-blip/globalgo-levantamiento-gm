@@ -265,7 +265,9 @@ function Ingreso({ sesion, setSesion }) {
     if (sinRespuestaClara(r)) { setError(AVISO_INGRESO); setPin(''); return; }
 
     if (!r.ok) { setError(r.error || 'No se pudo entrar'); setPin(''); return; }
-    const s = { token: r.token, nombre: r.nombre, area: r.area };
+    // etiqueta: nombre que se muestra en vez del área (p. ej. «Atención al cliente»,
+    // que trabaja como Cobranza). Solo cambia la cabecera; los permisos siguen el área.
+    const s = { token: r.token, nombre: r.nombre, area: r.area, etiqueta: r.etiqueta || '' };
     localStorage.setItem(LLAVE_SESION, JSON.stringify(s));
     setSesion(s);
     setAbierto(false); setPin('');
@@ -284,7 +286,7 @@ function Ingreso({ sesion, setSesion }) {
       }}>
         <span>
           <b style={{ color: T.blanco, fontWeight: 600 }}>{sesion.nombre}</b>
-          <span style={{ color: T.azulNav }}> · {nombreArea(sesion.area) || sesion.area}</span>
+          <span style={{ color: T.azulNav }}> · {sesion.etiqueta || nombreArea(sesion.area) || sesion.area}</span>
         </span>
         <button onClick={salir} style={{
           background: 'none', border: 0, color: T.azulNav, fontSize: 12,
@@ -1027,7 +1029,7 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
         // Una sesión guardada antes de esta versión traía `usuario` y no
         // `nombre`. Se traduce en vez de descartarla: el token sigue valiendo
         // 12 horas y no hay por qué echar a quien ya estaba dentro.
-        setSesion({ token: dato.token, nombre: dato.nombre || dato.usuario || '', area: dato.area });
+        setSesion({ token: dato.token, nombre: dato.nombre || dato.usuario || '', area: dato.area, etiqueta: dato.etiqueta || '' });
       }
     } catch { /* sesión ilegible: se pide de nuevo */ }
   }, []);
