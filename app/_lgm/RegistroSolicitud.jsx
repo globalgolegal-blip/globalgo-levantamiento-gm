@@ -54,7 +54,7 @@ function Caja({ fondo, color, children }) {
 }
 
 /** Lee el archivo como base64. Las fotos grandes se reducen a JPEG 1600 px. */
-async function leerArchivo(file) {
+export async function leerArchivo(file) {
   let blob = file;
   if (file.type.startsWith('image/') && file.size > 1.2 * 1024 * 1024) {
     try {
