@@ -819,6 +819,7 @@ function Ficha({ e, indice, sesion, onListo, onDudoso, fotos }) {
             {vencido(e) && <Pastilla texto="⚠ Vencido" fondo={T.rojoBg} color={T.rojo} />}
             {venceHoy(e) && <Pastilla texto="⚠ Vence hoy" fondo={T.ambarBg} color={T.ambar} />}
             {e.alerta && <Pastilla texto="Sin cargo de notaría" fondo={T.rojoBg} color={T.rojo} />}
+            {e.alertaCredito && <Pastilla texto="⚠ Crédito ya no puede levantarse" fondo={T.rojoBg} color={T.rojo} />}
           </div>
 
           <div style={{ fontSize: 13, color: T.texto2 }}>
@@ -840,6 +841,21 @@ function Ficha({ e, indice, sesion, onListo, onDudoso, fotos }) {
           borderTop: T.borde, background: T.crema, padding: 14,
           display: 'flex', flexDirection: 'column', gap: 16,
         }}>
+          {e.alertaCredito && (
+            <div role="alert" style={{
+              background: T.rojoBg, border: `0.5px solid ${T.rojo}`, borderLeft: `4px solid ${T.rojo}`,
+              borderRadius: T.rCard, padding: '10px 12px', fontSize: 13, color: T.texto, lineHeight: 1.45,
+            }}>
+              <b style={{ color: T.rojo }}>El crédito {e.alertaCredito.credito} ya no puede pedir el levantamiento</b>
+              {e.alertaCredito.motivo ? ` (${e.alertaCredito.motivo})` : ''}: pudo revertirse un pago. No presentar a
+              SUNARP hasta confirmar con Cobranza que el cliente terminó de pagar.
+              {e.alertaCredito.revisado && (
+                <span style={{ display: 'block', fontSize: 11.5, color: T.texto3, marginTop: 4 }}>
+                  Revisado en el sistema de créditos el {e.alertaCredito.revisado}.
+                </span>
+              )}
+            </div>
+          )}
           <section>
             <Rotulo>Datos del expediente</Rotulo>
             <dl style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 14px', fontSize: 13, margin: '8px 0 0' }}>
@@ -1019,6 +1035,22 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
     setAvisoSesion('');
     setExpedientes(normalizarExpedientes(r.expedientes));
     setListadoRecibido(true);
+    cargarAlertasCredito(token);
+  }
+
+  // Expedientes registrados con datos del portal de Sistemas cuyo crédito ya no
+  // puede pedir el levantamiento (pudo revertirse un pago). Sale de la revisión
+  // diaria de las 6:00; se pide aparte para no demorar el listado y, si falla,
+  // el tablero sigue igual: la alerta se suma, nunca bloquea la vista.
+  async function cargarAlertasCredito(token) {
+    let r;
+    try { r = await llamar({ accion: 'alertasCredito', token }); } catch { return; }
+    if (!r || r.ok !== true || !Array.isArray(r.alertas)) return;
+    const mapa = {};
+    r.alertas.forEach((a) => {
+      if (a && a.id) mapa[a.id] = { credito: String(a.credito || ''), motivo: String(a.motivo || ''), revisado: String(a.revisado || '') };
+    });
+    setExpedientes((lista) => lista.map((e) => ({ ...e, alertaCredito: mapa[e.id] || null })));
   }
 
   useEffect(() => {
