@@ -155,6 +155,10 @@ export default function RegistroSolicitud({ sesion, llamar, onCerrar, onListo, o
   // Aunque los datos los traiga el sistema, quien registra los ratifica con el cliente.
   const [ratificado, setRatificado] = useState(false);
   const [elegidoAMano, setElegidoAMano] = useState(false);
+  // Recuadro rojo (el sistema dice que el crédito aún no puede): no bloquea. Quien
+  // registra confirma que Cobranza verificó el pago y registra bajo su responsabilidad.
+  const [pagoConfirmado, setPagoConfirmado] = useState(false);
+  const fechaForzada = useRef(''); // fecha de firma puesta con «Llenar con los datos del crédito»
   const doiBuscado = useRef('');
 
   const set = (k) => (ev) => setD({ ...d, [k]: ev.target.value });
@@ -179,7 +183,7 @@ export default function RegistroSolicitud({ sesion, llamar, onCerrar, onListo, o
     setConsulta(null);
     // Con datos del sistema, la fecha es la del crédito elegido: no cambia con la placa
     // (si la placa no vino y se escribe a mano, la fecha del sistema se conserva).
-    setFecha((f) => (auto ? (f || auto.fecha) : ''));
+    setFecha((f) => (auto ? (f || auto.fecha) : (fechaForzada.current || '')));
     const pn = normPlaca(placa);
     if (pn.length < 6) { ultima.current = ''; setConsultando(false); return undefined; }
     const t = setTimeout(() => consultar(placa), 500);
@@ -227,6 +231,8 @@ export default function RegistroSolicitud({ sesion, llamar, onCerrar, onListo, o
     if (dn.length < 6) { setError('Escribe el documento del cliente (DNI o CE).'); return; }
     if (hoja && hoja.doi === dn && hoja.estado !== 'error') return;
     soltarAuto();
+    setPagoConfirmado(false);
+    fechaForzada.current = '';
     doiBuscado.current = dn;
     setError('');
     setHoja({ estado: 'buscando', doi: dn });
@@ -268,6 +274,8 @@ export default function RegistroSolicitud({ sesion, llamar, onCerrar, onListo, o
       doiBuscado.current = '';
       setHoja(null);
       soltarAuto();
+      setPagoConfirmado(false);
+      fechaForzada.current = '';
     }
   }
 
@@ -308,7 +316,10 @@ export default function RegistroSolicitud({ sesion, llamar, onCerrar, onListo, o
   const doiNum = normDoi(d.doi);
   if (!doiNum) faltan.push('DOI');
   if (hoja?.estado === 'buscando') faltan.push('esperar la búsqueda del DOI');
-  if (hoja?.estado === 'encontrado' && !auto) faltan.push('elegir el crédito');
+  const creditosHoja = hoja?.estado === 'encontrado' ? hoja.creditos : [];
+  const sinElegibles = hoja?.estado === 'encontrado' && !creditosHoja.some((c) => c.puedePedir !== false && !c.tramitado);
+  if (hoja?.estado === 'encontrado' && !auto && !sinElegibles) faltan.push('elegir al cliente («Es este cliente»)');
+  if (sinElegibles && !auto && !pagoConfirmado) faltan.push('marcar que Cobranza confirmó el pago (recuadro rojo)');
   if (!consulta) faltan.push(consultando ? 'esperar la consulta de la placa' : 'placa');
   if (consulta?.duplicado) faltan.push('revisar el expediente en curso');
   if (consulta && !consulta.enLista && !fecha) faltan.push('fecha de firma');
@@ -337,6 +348,14 @@ export default function RegistroSolicitud({ sesion, llamar, onCerrar, onListo, o
       };
     }
     if (hoja.estado === 'no_encontrado' || hoja.estado === 'sin_datos') return { estado: hoja.estado };
+    if (sinElegibles && pagoConfirmado) {
+      const c = hoja.creditos.find((x) => normPlaca(x.placa) === normPlaca(placa)) || hoja.creditos[0] || {};
+      return {
+        estado: 'registrado_con_aviso', credito: normCred(c.credito), codigo: String(c.codigo || ''),
+        motivo: String(c.motivo || (c.tramitado ? 'ya tiene expediente ' + c.tramitado : '')).slice(0, 120),
+        pagoConfirmado: true,
+      };
+    }
     return null;
   }
 
@@ -463,7 +482,26 @@ export default function RegistroSolicitud({ sesion, llamar, onCerrar, onListo, o
                 {' · '}{c.puedePedir === false ? <b style={{ color: T.rojo }}>{c.motivo}</b> : <>ya tiene expediente <b>{c.tramitado}</b></>}
               </div>
             ))}
-            <div style={{ fontSize: 12, marginTop: 4 }}>No registres la solicitud: explícale al cliente el motivo o consulta a Cobranza.</div>
+            <div style={{ fontSize: 12, marginTop: 4 }}>
+              Explícale al cliente el motivo o consulta a Cobranza. Si Cobranza confirma que el cliente ya pagó
+              (el sistema de créditos se actualiza una vez al día), puedes registrar igual.
+            </div>
+            {creditos.filter((c) => c.puedePedir === false && !c.tramitado).map((c, i) => (
+              <button key={'llenar-' + i} type="button" onClick={() => {
+                setD((p) => ({ ...p, nombre: String(c.nombre || '').trim() || p.nombre, credito: normCred(c.credito) || p.credito,
+                  correo: String(c.correo || '').trim().toLowerCase() || p.correo, correo2: String(c.correo || '').trim().toLowerCase() || p.correo2 }));
+                fechaForzada.current = c.fechaFirma || '';
+                if (c.fechaFirma) setFecha(c.fechaFirma);
+                if (c.placa) setPlaca(normPlaca(c.placa));
+              }} style={{
+                marginTop: 6, marginRight: 6, border: `0.5px solid ${T.rojo}`, background: T.blanco, color: T.rojo, borderRadius: T.rPill,
+                padding: '2px 10px', fontSize: 11.5, cursor: 'pointer',
+              }}>Llenar con los datos del crédito {c.credito || ''}</button>
+            ))}
+            <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 8, fontSize: 12.5, color: T.texto, cursor: 'pointer' }}>
+              <input type="checkbox" checked={pagoConfirmado} onChange={(ev) => setPagoConfirmado(ev.target.checked)} />
+              <span><b>Cobranza confirmó que el cliente ya pagó.</b> Registro la solicitud bajo mi responsabilidad.</span>
+            </label>
           </Caja>
         )}
 
