@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { esRespuestaUsable, AVISO_NEUTRO } from '../../_lgm/respuesta';
 
+// La consulta por DOI puede tardar 20–30 s cuando el portal relee al cliente en
+// BigQuery; sin esto Vercel podría cortar la llamada antes de que responda.
+export const maxDuration = 60;
+
 const espera = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Se lanza cuando el servidor contestó pero no se entiende qué contestó. NO es
