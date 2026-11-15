@@ -461,7 +461,10 @@ export default function RegistroSolicitud({ sesion, llamar, onCerrar, onListo, o
         {hoja?.estado === 'no_encontrado' && (
           <Caja fondo={T.ambarBg} color={T.ambar}>
             Este documento <b>no tiene créditos</b> en el sistema de créditos (se buscó como DNI y como CE).
-            Revisa que esté bien escrito y confirma que el cliente terminó de pagar. Si es así, llena los datos a mano.
+            <div style={{ fontWeight: 700, margin: '4px 0' }}>
+              Revisa el DOI dígito por dígito con el documento del cliente: puede haber un dígito mal.
+            </div>
+            Si está bien y el cliente terminó de pagar, llena los datos a mano.
             <div style={{ fontSize: 11.5, marginTop: 4, color: T.texto2 }}>{AVISO_DEMORA}</div>
             <CasillaPago marcada={pagoConfirmado} alCambiar={setPagoConfirmado} />
           </Caja>
@@ -685,10 +688,6 @@ export default function RegistroSolicitud({ sesion, llamar, onCerrar, onListo, o
             {enviando ? 'Registrando…' : 'Registrar solicitud'}
           </Btn>
           <Btn onClick={onCerrar}>Cancelar</Btn>
-          {formAnterior && formAnterior !== '#' && (
-            <a href={formAnterior} target="_blank" rel="noopener noreferrer"
-              style={{ fontSize: 11.5, color: T.texto3, marginLeft: 'auto' }}>Usar el formulario anterior</a>
-          )}
         </div>
       </div>
     </div>
