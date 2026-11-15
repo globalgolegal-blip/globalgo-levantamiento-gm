@@ -335,7 +335,10 @@ export default function RegistroSolicitud({ sesion, llamar, onCerrar, onListo, o
   const creditosHoja = hoja?.estado === 'encontrado' ? hoja.creditos : [];
   const sinElegibles = hoja?.estado === 'encontrado' && !creditosHoja.some((c) => c.puedePedir !== false && !c.tramitado);
   if (hoja?.estado === 'encontrado' && !auto && !sinElegibles) faltan.push('elegir al cliente («Es este cliente»)');
-  if (sinElegibles && !auto && !pagoConfirmado) faltan.push('marcar que ratificaste el pago con el cliente (recuadro rojo)');
+  // Si lo único que impide es que ya tiene expediente, no se registra de nuevo.
+  const forzablesHoja = creditosHoja.filter((c) => c.puedePedir === false && !c.tramitado);
+  if (sinElegibles && !auto && !forzablesHoja.length) faltan.push('no registrar otra solicitud: ya tiene expediente (búscalo en el tablero)');
+  else if (sinElegibles && !auto && !pagoConfirmado) faltan.push('marcar que ratificaste el pago con el cliente (recuadro rojo)');
   if (hoja?.estado === 'no_encontrado' && !pagoConfirmado) faltan.push('marcar que ratificaste el pago con el cliente (recuadro amarillo)');
   if (!consulta) faltan.push(consultando ? 'esperar la consulta de la placa' : 'placa');
   if (consulta?.duplicado) faltan.push('revisar el expediente en curso');
@@ -507,15 +510,23 @@ export default function RegistroSolicitud({ sesion, llamar, onCerrar, onListo, o
                 {' · '}{c.puedePedir === false ? <b style={{ color: T.rojo }}>{c.motivo}</b> : <>ya tiene expediente <b>{c.tramitado}</b></>}
               </div>
             ))}
-            <div style={{ fontSize: 12, marginTop: 4 }}>
-              Explícale al cliente el motivo. Si dice que ya pagó, ratifícalo con él: puedes registrar igual.
-            </div>
-            <div style={{ fontSize: 11.5, marginTop: 2, color: T.texto2 }}>
-              {hoja?.enLineaNoDisponible
-                ? 'No se pudo verificar en línea: el dato es de la mañana. '
-                : creditos.some((c) => c.enLinea) ? 'Verificado en línea. ' : ''}
-              {AVISO_DEMORA}
-            </div>
+            {!creditos.some((c) => c.puedePedir === false && !c.tramitado) ? (
+              <div style={{ fontSize: 12, marginTop: 4 }}>
+                <b>No registres otra solicitud:</b> búscala en el tablero con el N° de expediente para darle al cliente el estado.
+              </div>
+            ) : (
+              <>
+                <div style={{ fontSize: 12, marginTop: 4 }}>
+                  Explícale al cliente el motivo. Si dice que ya pagó, ratifícalo con él: puedes registrar igual.
+                </div>
+                <div style={{ fontSize: 11.5, marginTop: 2, color: T.texto2 }}>
+                  {hoja?.enLineaNoDisponible
+                    ? 'No se pudo verificar en línea: el dato es de la mañana. '
+                    : creditos.some((c) => c.enLinea) ? 'Verificado en línea. ' : ''}
+                  {AVISO_DEMORA}
+                </div>
+              </>
+            )}
             {creditos.filter((c) => c.puedePedir === false && !c.tramitado).map((c, i) => (
               <button key={'llenar-' + i} type="button" onClick={() => {
                 setD((p) => ({ ...p, nombre: String(c.nombre || '').trim() || p.nombre, credito: normCred(c.credito) || p.credito,
@@ -528,7 +539,9 @@ export default function RegistroSolicitud({ sesion, llamar, onCerrar, onListo, o
                 padding: '2px 10px', fontSize: 11.5, cursor: 'pointer',
               }}>Llenar con los datos del crédito {c.credito || ''}</button>
             ))}
-            <CasillaPago marcada={pagoConfirmado} alCambiar={setPagoConfirmado} />
+            {creditos.some((c) => c.puedePedir === false && !c.tramitado) && (
+              <CasillaPago marcada={pagoConfirmado} alCambiar={setPagoConfirmado} />
+            )}
           </Caja>
         )}
 
