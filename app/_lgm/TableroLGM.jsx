@@ -130,7 +130,7 @@ function chipsArchivo(urls, etiqueta) {
 
 function hitos(e) {
   const l = [];
-  if (e.fechaSolicitud)    l.push(['Solicitud registrada por Cobranza', e.fechaSolicitud, 'ok']);
+  if (e.fechaSolicitud)    l.push(['Solicitud registrada por Atención al cliente', e.fechaSolicitud, 'ok']);
   if (e.fechaValidacion)   l.push([`Tesorería validó el depósito de ${soles(e.monto)}`, e.fechaValidacion, 'ok']);
   if (e.notaria)           l.push(['Ingresado a notaría Quintanilla', e.notaria, 'ok']);
   if (e.fechaPresentacion) l.push([`Presentado a SUNARP · título ${e.titulo || '—'}`, e.fechaPresentacion, 'ok']);
@@ -875,7 +875,8 @@ function Ficha({ e, indice, sesion, onListo, onDudoso, fotos }) {
             }}>
               <b style={{ color: T.ambar }}>En revisión: no presentar a SUNARP todavía.</b>{' '}
               {ORIGEN_REVISION[e.alertaCredito.origen] || 'Sin verificar en el sistema de créditos'}
-              {e.alertaCredito.motivo ? ` (${e.alertaCredito.motivo})` : ''}.
+              {e.alertaCredito.motivo && e.alertaCredito.motivo.toLowerCase() !== String(ORIGEN_REVISION[e.alertaCredito.origen] || '').toLowerCase()
+                ? ` (${e.alertaCredito.motivo})` : ''}.
               {e.alertaCredito.usuario ? ` Registró ${e.alertaCredito.usuario}` : ''}
               {e.alertaCredito.registrado ? ` el ${e.alertaCredito.registrado}` : ''}.
               {' '}GoTrack lo vuelve a consultar cada 4 horas y al pasar a Legal; la marca se quita sola cuando el
@@ -897,7 +898,7 @@ function Ficha({ e, indice, sesion, onListo, onDudoso, fotos }) {
             }}>
               <b style={{ color: T.rojo }}>El crédito {e.alertaCredito.credito} ya no puede pedir el levantamiento</b>
               {e.alertaCredito.motivo ? ` (${e.alertaCredito.motivo})` : ''}: pudo revertirse un pago. No presentar a
-              SUNARP hasta confirmar con Cobranza que el cliente terminó de pagar.
+              SUNARP hasta confirmar con Atención al cliente que el cliente terminó de pagar.
               {e.alertaCredito.revisado && (
                 <span style={{ display: 'block', fontSize: 11.5, color: T.texto3, marginTop: 4 }}>
                   Revisado en el sistema de créditos el {e.alertaCredito.revisado}.
