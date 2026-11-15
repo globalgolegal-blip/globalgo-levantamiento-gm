@@ -29,6 +29,13 @@ const LLAVE_SESION = 'lgm_sesion';
 // Esta web vive aparte de GoTrack; la barra enlaza de vuelta a los otros módulos.
 const GOTRACK = process.env.NEXT_PUBLIC_GOTRACK_URL || 'https://gotrack-go.vercel.app';
 
+
+// Por qué quedó en revisión un expediente (lo manda el servidor en `origen`).
+const ORIGEN_REVISION = {
+  rojo: 'Registrado con aviso rojo: el sistema de créditos indicaba que no puede',
+  amarillo: 'El DOI no figuraba en el sistema de créditos',
+  gris: 'Sin verificar en el sistema de créditos',
+};
 /* ─────────────────────────────── helpers */
 
 // Zona horaria fija: el servidor renderiza en UTC y el navegador en hora de Lima,
@@ -819,7 +826,8 @@ function Ficha({ e, indice, sesion, onListo, onDudoso, fotos }) {
             {vencido(e) && <Pastilla texto="⚠ Vencido" fondo={T.rojoBg} color={T.rojo} />}
             {venceHoy(e) && <Pastilla texto="⚠ Vence hoy" fondo={T.ambarBg} color={T.ambar} />}
             {e.alerta && <Pastilla texto="Sin cargo de notaría" fondo={T.rojoBg} color={T.rojo} />}
-            {e.alertaCredito && <Pastilla texto="⚠ Crédito ya no puede levantarse" fondo={T.rojoBg} color={T.rojo} />}
+            {e.alertaCredito && e.alertaCredito.tipo !== 'revision' && <Pastilla texto="⚠ Crédito ya no puede levantarse" fondo={T.rojoBg} color={T.rojo} />}
+            {e.alertaCredito && e.alertaCredito.tipo === 'revision' && <Pastilla texto="⏳ En revisión" fondo={T.ambarBg} color={T.ambar} />}
           </div>
 
           <div style={{ fontSize: 13, color: T.texto2 }}>
@@ -841,7 +849,26 @@ function Ficha({ e, indice, sesion, onListo, onDudoso, fotos }) {
           borderTop: T.borde, background: T.crema, padding: 14,
           display: 'flex', flexDirection: 'column', gap: 16,
         }}>
-          {e.alertaCredito && (
+          {e.alertaCredito && e.alertaCredito.tipo === 'revision' && (
+            <div role="alert" style={{
+              background: T.ambarBg, border: `0.5px solid ${T.ambar}`, borderLeft: `4px solid ${T.ambar}`,
+              borderRadius: T.rCard, padding: '10px 12px', fontSize: 13, color: T.texto, lineHeight: 1.45,
+            }}>
+              <b style={{ color: T.ambar }}>En revisión: no presentar a SUNARP todavía.</b>{' '}
+              {ORIGEN_REVISION[e.alertaCredito.origen] || 'Sin verificar en el sistema de créditos'}
+              {e.alertaCredito.motivo ? ` (${e.alertaCredito.motivo})` : ''}.
+              {e.alertaCredito.usuario ? ` Registró ${e.alertaCredito.usuario}` : ''}
+              {e.alertaCredito.registrado ? ` el ${e.alertaCredito.registrado}` : ''}.
+              {' '}GoTrack lo vuelve a consultar cada 4 horas y al pasar a Legal; la marca se quita sola cuando el
+              sistema de créditos confirme el pago.
+              {e.alertaCredito.revisado && (
+                <span style={{ display: 'block', fontSize: 11.5, color: T.texto3, marginTop: 4 }}>
+                  Última consulta: {e.alertaCredito.revisado}{e.alertaCredito.resultado ? ` · ${e.alertaCredito.resultado}` : ''}.
+                </span>
+              )}
+            </div>
+          )}
+          {e.alertaCredito && e.alertaCredito.tipo !== 'revision' && (
             <div role="alert" style={{
               background: T.rojoBg, border: `0.5px solid ${T.rojo}`, borderLeft: `4px solid ${T.rojo}`,
               borderRadius: T.rCard, padding: '10px 12px', fontSize: 13, color: T.texto, lineHeight: 1.45,
@@ -1048,7 +1075,13 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
     if (!r || r.ok !== true || !Array.isArray(r.alertas)) return;
     const mapa = {};
     r.alertas.forEach((a) => {
-      if (a && a.id) mapa[a.id] = { credito: String(a.credito || ''), motivo: String(a.motivo || ''), revisado: String(a.revisado || '') };
+      if (a && a.id) {
+        mapa[a.id] = {
+          tipo: a.tipo === 'revision' ? 'revision' : 'alerta', origen: String(a.origen || ''),
+          credito: String(a.credito || ''), motivo: String(a.motivo || ''), usuario: String(a.usuario || ''),
+          registrado: String(a.registrado || ''), revisado: String(a.revisado || ''), resultado: String(a.resultado || ''),
+        };
+      }
     });
     setExpedientes((lista) => lista.map((e) => ({ ...e, alertaCredito: mapa[e.id] || null })));
   }
