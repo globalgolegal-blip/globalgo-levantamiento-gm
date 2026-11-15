@@ -115,6 +115,20 @@ function Caja({ fondo, color, children }) {
   );
 }
 
+// El portal relee en el momento la base actualizada, pero los pagos de SIS360 tardan
+// hasta 2 horas en llegar a esa base.
+const AVISO_DEMORA = 'Un pago de las últimas 2 horas puede no verse todavía en el sistema.';
+
+/** Quien registra ratifica el pago con el cliente (recuadro rojo o amarillo). */
+function CasillaPago({ marcada, alCambiar }) {
+  return (
+    <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 8, fontSize: 12.5, color: T.texto, cursor: 'pointer' }}>
+      <input type="checkbox" checked={marcada} onChange={(ev) => alCambiar(ev.target.checked)} />
+      <span><b>Ratifiqué con el cliente que ya pagó su deuda.</b> Registro la solicitud bajo mi responsabilidad.</span>
+    </label>
+  );
+}
+
 /** Lee el archivo como base64. Las fotos grandes se reducen a JPEG 1600 px. */
 export async function leerArchivo(file) {
   let blob = file;
@@ -155,8 +169,9 @@ export default function RegistroSolicitud({ sesion, llamar, onCerrar, onListo, o
   // Aunque los datos los traiga el sistema, quien registra los ratifica con el cliente.
   const [ratificado, setRatificado] = useState(false);
   const [elegidoAMano, setElegidoAMano] = useState(false);
-  // Recuadro rojo (el sistema dice que el crédito aún no puede): no bloquea. Quien
-  // registra confirma que Cobranza verificó el pago y registra bajo su responsabilidad.
+  // Recuadro rojo (el sistema dice que el crédito aún no puede) o amarillo (no figura):
+  // no bloquea. Quien registra ratifica con el cliente que ya pagó y registra bajo su
+  // responsabilidad; el expediente queda EN REVISIÓN hasta que el sistema lo confirme.
   const [pagoConfirmado, setPagoConfirmado] = useState(false);
   const fechaForzada = useRef(''); // fecha de firma puesta con «Llenar con los datos del crédito»
   const doiBuscado = useRef('');
@@ -246,7 +261,8 @@ export default function RegistroSolicitud({ sesion, llamar, onCerrar, onListo, o
     if (!r.disponible) setHoja({ estado: 'sin_datos', doi: dn });
     else if (!creditos.length) setHoja({ estado: 'no_encontrado', doi: dn });
     else {
-      setHoja({ estado: 'encontrado', doi: dn, creditos, firmaNoDisponible: r.firmaNoDisponible === true });
+      setHoja({ estado: 'encontrado', doi: dn, creditos, firmaNoDisponible: r.firmaNoDisponible === true,
+        enLineaNoDisponible: r.enLineaNoDisponible === true });
       const c = creditoPorDefecto(creditos);
       if (c) elegir(c);
     }
@@ -319,7 +335,8 @@ export default function RegistroSolicitud({ sesion, llamar, onCerrar, onListo, o
   const creditosHoja = hoja?.estado === 'encontrado' ? hoja.creditos : [];
   const sinElegibles = hoja?.estado === 'encontrado' && !creditosHoja.some((c) => c.puedePedir !== false && !c.tramitado);
   if (hoja?.estado === 'encontrado' && !auto && !sinElegibles) faltan.push('elegir al cliente («Es este cliente»)');
-  if (sinElegibles && !auto && !pagoConfirmado) faltan.push('marcar que Cobranza confirmó el pago (recuadro rojo)');
+  if (sinElegibles && !auto && !pagoConfirmado) faltan.push('marcar que ratificaste el pago con el cliente (recuadro rojo)');
+  if (hoja?.estado === 'no_encontrado' && !pagoConfirmado) faltan.push('marcar que ratificaste el pago con el cliente (recuadro amarillo)');
   if (!consulta) faltan.push(consultando ? 'esperar la consulta de la placa' : 'placa');
   if (consulta?.duplicado) faltan.push('revisar el expediente en curso');
   if (consulta && !consulta.enLista && !fecha) faltan.push('fecha de firma');
@@ -347,13 +364,14 @@ export default function RegistroSolicitud({ sesion, llamar, onCerrar, onListo, o
         cambiados: campos.filter((k) => ['editado', 'cambiado'].includes(est[k])).map((k) => NOMBRE_DATO[k]),
       };
     }
-    if (hoja.estado === 'no_encontrado' || hoja.estado === 'sin_datos') return { estado: hoja.estado };
+    if (hoja.estado === 'no_encontrado') return { estado: hoja.estado, ratificoPago: pagoConfirmado };
+    if (hoja.estado === 'sin_datos') return { estado: hoja.estado };
     if (sinElegibles && pagoConfirmado) {
       const c = hoja.creditos.find((x) => normPlaca(x.placa) === normPlaca(placa)) || hoja.creditos[0] || {};
       return {
         estado: 'registrado_con_aviso', credito: normCred(c.credito), codigo: String(c.codigo || ''),
         motivo: String(c.motivo || (c.tramitado ? 'ya tiene expediente ' + c.tramitado : '')).slice(0, 120),
-        pagoConfirmado: true,
+        ratificoPago: true,
       };
     }
     return null;
@@ -425,6 +443,11 @@ export default function RegistroSolicitud({ sesion, llamar, onCerrar, onListo, o
             </Btn>
           </div>
         </Campo>
+        {hoja?.estado === 'buscando' && (
+          <p style={{ fontSize: 11.5, color: T.texto3, margin: '-6px 0 10px' }}>
+            Revisando la base actualizada del sistema de Go; puede tardar unos segundos.
+          </p>
+        )}
 
         {auto && auto.doi && hoja && auto.doi !== hoja.doi && (
           <p style={{ fontSize: 11.5, color: T.azul, margin: '-4px 0 10px' }}>
@@ -436,6 +459,8 @@ export default function RegistroSolicitud({ sesion, llamar, onCerrar, onListo, o
           <Caja fondo={T.ambarBg} color={T.ambar}>
             Este documento <b>no tiene créditos</b> en el sistema de créditos (se buscó como DNI y como CE).
             Revisa que esté bien escrito y confirma que el cliente terminó de pagar. Si es así, llena los datos a mano.
+            <div style={{ fontSize: 11.5, marginTop: 4, color: T.texto2 }}>{AVISO_DEMORA}</div>
+            <CasillaPago marcada={pagoConfirmado} alCambiar={setPagoConfirmado} />
           </Caja>
         )}
         {hoja?.estado === 'sin_datos' && (
@@ -483,8 +508,13 @@ export default function RegistroSolicitud({ sesion, llamar, onCerrar, onListo, o
               </div>
             ))}
             <div style={{ fontSize: 12, marginTop: 4 }}>
-              Explícale al cliente el motivo o consulta a Cobranza. Si Cobranza confirma que el cliente ya pagó
-              (el sistema de créditos se actualiza una vez al día), puedes registrar igual.
+              Explícale al cliente el motivo. Si dice que ya pagó, ratifícalo con él: puedes registrar igual.
+            </div>
+            <div style={{ fontSize: 11.5, marginTop: 2, color: T.texto2 }}>
+              {hoja?.enLineaNoDisponible
+                ? 'No se pudo verificar en línea: el dato es de la mañana. '
+                : creditos.some((c) => c.enLinea) ? 'Verificado en línea. ' : ''}
+              {AVISO_DEMORA}
             </div>
             {creditos.filter((c) => c.puedePedir === false && !c.tramitado).map((c, i) => (
               <button key={'llenar-' + i} type="button" onClick={() => {
@@ -498,10 +528,7 @@ export default function RegistroSolicitud({ sesion, llamar, onCerrar, onListo, o
                 padding: '2px 10px', fontSize: 11.5, cursor: 'pointer',
               }}>Llenar con los datos del crédito {c.credito || ''}</button>
             ))}
-            <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 8, fontSize: 12.5, color: T.texto, cursor: 'pointer' }}>
-              <input type="checkbox" checked={pagoConfirmado} onChange={(ev) => setPagoConfirmado(ev.target.checked)} />
-              <span><b>Cobranza confirmó que el cliente ya pagó.</b> Registro la solicitud bajo mi responsabilidad.</span>
-            </label>
+            <CasillaPago marcada={pagoConfirmado} alCambiar={setPagoConfirmado} />
           </Caja>
         )}
 
