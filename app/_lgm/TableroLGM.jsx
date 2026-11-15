@@ -827,7 +827,11 @@ function Ficha({ e, indice, sesion, onListo, onDudoso, fotos }) {
             {venceHoy(e) && <Pastilla texto="⚠ Vence hoy" fondo={T.ambarBg} color={T.ambar} />}
             {e.alerta && <Pastilla texto="Sin cargo de notaría" fondo={T.rojoBg} color={T.rojo} />}
             {e.alertaCredito && e.alertaCredito.tipo !== 'revision' && <Pastilla texto="⚠ Crédito ya no puede levantarse" fondo={T.rojoBg} color={T.rojo} />}
-            {e.alertaCredito && e.alertaCredito.tipo === 'revision' && <Pastilla texto="⏳ En revisión" fondo={T.ambarBg} color={T.ambar} />}
+            {e.alertaCredito && e.alertaCredito.tipo === 'revision' && (
+              e.alertaCredito.confirmado
+                ? <Pastilla texto="✓ Pago confirmado por Atención al cliente" fondo={T.azulBg} color={T.azul} />
+                : <Pastilla texto="⏳ En revisión" fondo={T.ambarBg} color={T.ambar} />
+            )}
           </div>
 
           <div style={{ fontSize: 13, color: T.texto2 }}>
@@ -849,7 +853,22 @@ function Ficha({ e, indice, sesion, onListo, onDudoso, fotos }) {
           borderTop: T.borde, background: T.crema, padding: 14,
           display: 'flex', flexDirection: 'column', gap: 16,
         }}>
-          {e.alertaCredito && e.alertaCredito.tipo === 'revision' && (
+          {e.alertaCredito && e.alertaCredito.tipo === 'revision' && e.alertaCredito.confirmado && (
+            <div role="status" style={{
+              background: T.azulBg, border: `0.5px solid ${T.azul}`, borderLeft: `4px solid ${T.azul}`,
+              borderRadius: T.rCard, padding: '10px 12px', fontSize: 13, color: T.texto, lineHeight: 1.45,
+            }}>
+              <b style={{ color: T.azul }}>Pago confirmado por Atención al cliente</b> el {e.alertaCredito.confirmado}
+              {' '}(su respuesta está en Observaciones y respuestas). El sistema de créditos todavía no lo muestra;
+              GoTrack sigue revisando. Puedes continuar con el trámite.
+              {e.alertaCredito.revisado && (
+                <span style={{ display: 'block', fontSize: 11.5, color: T.texto3, marginTop: 4 }}>
+                  Última consulta: {e.alertaCredito.revisado}{e.alertaCredito.resultado ? ` · ${e.alertaCredito.resultado}` : ''}.
+                </span>
+              )}
+            </div>
+          )}
+          {e.alertaCredito && e.alertaCredito.tipo === 'revision' && !e.alertaCredito.confirmado && (
             <div role="alert" style={{
               background: T.ambarBg, border: `0.5px solid ${T.ambar}`, borderLeft: `4px solid ${T.ambar}`,
               borderRadius: T.rCard, padding: '10px 12px', fontSize: 13, color: T.texto, lineHeight: 1.45,
@@ -861,6 +880,9 @@ function Ficha({ e, indice, sesion, onListo, onDudoso, fotos }) {
               {e.alertaCredito.registrado ? ` el ${e.alertaCredito.registrado}` : ''}.
               {' '}GoTrack lo vuelve a consultar cada 4 horas y al pasar a Legal; la marca se quita sola cuando el
               sistema de créditos confirme el pago.
+              {e.alertaCredito.observado
+                ? ` Como pasaron 24 horas sin pago, se observó automáticamente a Atención al cliente${e.alertaCredito.observado !== 'sí' ? ` el ${e.alertaCredito.observado}` : ''} (sin aviso al cliente).`
+                : ' Si a las 24 horas del registro sigue sin pago, se observará automáticamente a Atención al cliente.'}
               {e.alertaCredito.revisado && (
                 <span style={{ display: 'block', fontSize: 11.5, color: T.texto3, marginTop: 4 }}>
                   Última consulta: {e.alertaCredito.revisado}{e.alertaCredito.resultado ? ` · ${e.alertaCredito.resultado}` : ''}.
@@ -1080,6 +1102,7 @@ export default function TableroLGM({ conteos = {}, carga = {}, alertas = 0, usua
           tipo: a.tipo === 'revision' ? 'revision' : 'alerta', origen: String(a.origen || ''),
           credito: String(a.credito || ''), motivo: String(a.motivo || ''), usuario: String(a.usuario || ''),
           registrado: String(a.registrado || ''), revisado: String(a.revisado || ''), resultado: String(a.resultado || ''),
+          observado: String(a.observado || ''), confirmado: String(a.confirmado || ''),
         };
       }
     });
